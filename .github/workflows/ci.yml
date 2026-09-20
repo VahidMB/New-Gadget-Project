@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set env file
+        run: cp .env.example .env
+
+      - name: Build containers
+        run: docker compose build
+
+      - name: Start dependencies
+        run: docker compose up -d db redis mqtt
+
+      - name: Run migrations
+        run: docker compose run --rm api python manage.py migrate
+
+      - name: Run lint
+        run: docker compose run --rm api ruff check .
+
+      - name: Run tests
+        run: docker compose run --rm api pytest -q
