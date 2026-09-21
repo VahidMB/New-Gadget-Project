@@ -1,5 +1,5 @@
 # Gadget Backend (Professional Bootstrap)
-
+ 
 Backend and infrastructure baseline for an ESP32 gadget platform.
 
 ## Detailed guides (separate files)
