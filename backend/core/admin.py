@@ -138,7 +138,7 @@ class DeviceStatusAdmin(admin.ModelAdmin):
     list_display = ("device", "status", "last_heartbeat_at", "last_config_version", "firmware_version", "battery_level", "signal_strength")
     search_fields = ("device__external_id", "device__name", "firmware_version")
     list_filter = ("status", "updated_at")
-    readonly_fields = ("updated_at")
+    readonly_fields = ("updated_at",)
 
 
 @admin.register(WordPressDevice)
