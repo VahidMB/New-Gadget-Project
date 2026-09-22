@@ -49,7 +49,10 @@
 15. [15-monitoring-and-health.md](./15-monitoring-and-health.md)  
    نظارت بر سلامت سرویس‌ها و دستگاه‌ها؛ dashboard status و heartbeat endpoint.
 
+16. [16-device-security-ota.md](./16-device-security-ota.md)  
+   Provisioning، توکن اختصاصی دستگاه، MQTT و فرآیند OTA.
+
 ## Scope فعلی
 
 این مستندات فقط برای **زیرساخت اولیه استاندارد** هستند (Backend + Dependencies + Automation).  
-بخش‌های بعدی مثل Device Auth، OTA Signing، و Data Pipeline پیشرفته در گام بعد اضافه می‌شوند.
+Device Auth، OTA workflow، MQTT notification و monitoring عملیاتی نیز به این baseline افزوده شده‌اند.

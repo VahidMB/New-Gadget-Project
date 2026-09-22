@@ -1,0 +1,7 @@
+{% extends 'core/portal/base.html' %}
+{% block title %}منابع داده · مدیریت گجت{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>منابع داده</h1><p class="muted">منابع خارجی قابل‌استفاده در نمایشگرها</p></div><a class="button" href="{% url 'panel-data-source-create' %}">افزودن منبع</a></div>
+<div class="table-wrap"><table><thead><tr><th>شرکت</th><th>نام</th><th>نوع</th><th>نشانی</th><th>فعال</th><th></th></tr></thead>
+<tbody>{% for source in sources %}<tr><td>{{ source.company }}</td><td>{{ source.name }}</td><td>{{ source.get_source_type_display }}</td><td>{{ source.endpoint_url }}</td><td>{{ source.is_active|yesno:'بله,خیر' }}</td><td><a class="button secondary" href="{% url 'panel-data-source-edit' source.pk %}">ویرایش</a></td></tr>{% empty %}<tr><td class="empty" colspan="6">هنوز منبع داده‌ای تعریف نشده است.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

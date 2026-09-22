@@ -26,6 +26,7 @@ class Migration(migrations.Migration):
                             ("worker", "Celery Worker"),
                         ],
                         max_length=64,
+                        unique=True,
                     ),
                 ),
                 (
@@ -38,14 +39,14 @@ class Migration(migrations.Migration):
                 ),
                 ("response_time_ms", models.PositiveIntegerField(default=0)),
                 ("last_check_at", models.DateTimeField(auto_now=True)),
-                ("error_message", models.TextField(blank=True, default="")),
+                ("error_message", models.TextField(blank=True)),
                 ("check_count", models.PositiveIntegerField(default=0)),
                 ("failed_count", models.PositiveIntegerField(default=0)),
             ],
             options={
                 "verbose_name": "Service Health",
                 "verbose_name_plural": "Service Health",
-                "ordering": ["-last_check_at"],
+                "ordering": ["service_name"],
             },
         ),
         migrations.CreateModel(
@@ -66,10 +67,11 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("last_heartbeat_at", models.DateTimeField(blank=True, null=True)),
-                ("firmware_version", models.CharField(blank=True, default="", max_length=64)),
-                ("battery_level", models.PositiveIntegerField(blank=True, default=0)),
-                ("signal_strength", models.IntegerField(blank=True, default=0)),
-                ("error_message", models.TextField(blank=True, default="")),
+                ("last_config_version", models.PositiveIntegerField(default=0)),
+                ("firmware_version", models.CharField(blank=True, max_length=64)),
+                ("battery_level", models.PositiveIntegerField(default=0)),
+                ("signal_strength", models.IntegerField(default=0)),
+                ("error_message", models.TextField(blank=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (
                     "device",
@@ -82,8 +84,7 @@ class Migration(migrations.Migration):
             ],
             options={
                 "verbose_name": "Device Status",
-                "verbose_name_plural": "Device Statuses",
-                "ordering": ["-updated_at"],
+                "verbose_name_plural": "Device Status",
             },
         ),
     ]

@@ -1,0 +1,11 @@
+{% extends 'core/portal/base.html' %}
+{% block title %}بارگذاری Firmware · مدیریت گجت{% endblock %}
+{% block content %}
+<h1>بارگذاری Firmware جدید</h1>
+<p class="muted">فایل باید خروجی کامپایل‌شدهٔ ESP32 با پسوند <strong>.bin</strong> باشد؛ فایل کد، ZIP یا پروژه را آپلود نکنید.</p>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}
+  {{ form.non_field_errors }}
+  {% for field in form %}<label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.help_text }}{{ field.errors }}{% endfor %}
+  <div class="actions"><button type="submit">بارگذاری و ثبت نسخه</button><a class="button" href="{% url 'panel-firmware-list' %}">انصراف</a></div>
+</form>
+{% endblock %}

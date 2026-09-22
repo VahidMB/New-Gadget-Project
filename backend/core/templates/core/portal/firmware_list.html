@@ -1,0 +1,9 @@
+{% extends 'core/portal/base.html' %}
+{% block title %}Firmware · مدیریت گجت{% endblock %}
+{% block content %}
+<h1>نسخه‌های Firmware</h1>
+<p class="muted">فقط فایل کامپایل‌شده با پسوند <strong>.bin</strong> را بارگذاری کنید. checksum به‌صورت خودکار محاسبه می‌شود.</p>
+<div class="actions"><a class="button" href="{% url 'panel-firmware-upload' %}">بارگذاری Firmware جدید</a></div>
+<table><thead><tr><th>مدل سخت‌افزار</th><th>نسخه</th><th>فایل</th><th>SHA-256</th><th>فعال</th><th>اجباری</th><th>انتشار</th></tr></thead>
+<tbody>{% for release in releases %}<tr><td>{{ release.hardware_model }}</td><td>{{ release.version }}</td><td>{% if release.firmware_file %}<a href="{{ release.firmware_file.url }}">دانلود فایل</a>{% else %}لینک خارجی{% endif %}</td><td>{{ release.checksum_sha256|truncatechars:16 }}</td><td>{{ release.is_active|yesno:'بله,خیر' }}</td><td>{{ release.is_mandatory|yesno:'بله,خیر' }}</td><td>{{ release.published_at|default:'—' }}</td></tr>{% empty %}<tr><td colspan="7">هنوز نسخه‌ای بارگذاری نشده است.</td></tr>{% endfor %}</tbody></table>
+{% endblock %}

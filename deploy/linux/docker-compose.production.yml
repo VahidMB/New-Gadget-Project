@@ -1,11 +1,11 @@
 services:
   api:
     build:
-      context: ./backend
+      context: ../../backend
       dockerfile: Dockerfile
-    container_name: gadget_api
+    restart: unless-stopped
     env_file:
-      - .env
+      - ../../.env.production
     depends_on:
       db:
         condition: service_healthy
@@ -14,81 +14,77 @@ services:
       mqtt:
         condition: service_started
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
-      - ./backend:/app
-      - ./data/media:/app/media
+      - ../../data/media:/app/media
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 8000"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
-      retries: 20
+      retries: 10
 
   worker:
     build:
-      context: ./backend
+      context: ../../backend
       dockerfile: Dockerfile
     command: celery -A gadget_server worker --loglevel=INFO
+    restart: unless-stopped
     env_file:
-      - .env
+      - ../../.env.production
     depends_on:
       api:
         condition: service_healthy
-      db:
-        condition: service_healthy
       redis:
         condition: service_started
-    volumes:
-      - ./backend:/app
 
   beat:
     build:
-      context: ./backend
+      context: ../../backend
       dockerfile: Dockerfile
     command: celery -A gadget_server beat --loglevel=INFO
+    restart: unless-stopped
     env_file:
-      - .env
+      - ../../.env.production
     depends_on:
       api:
         condition: service_healthy
-      db:
-        condition: service_healthy
       redis:
         condition: service_started
-    volumes:
-      - ./backend:/app
 
   db:
     image: postgres:16-alpine
-    container_name: gadget_db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: gadget_redis
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
 
   mqtt:
     image: eclipse-mosquitto:2
-    container_name: gadget_mqtt
+    restart: unless-stopped
     ports:
-      - "1883:1883"
-      - "9001:9001"
+      - "8883:8883"
     volumes:
-      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto.production.conf:/mosquitto/config/mosquitto.conf:ro
+      - ${MQTT_CERTS_DIR}:/mosquitto/certs:ro
+      - ${MQTT_PASSWORD_FILE}:/mosquitto/config/passwordfile:ro
+      - mosquitto_data:/mosquitto/data
 
 volumes:
   postgres_data:
+  redis_data:
+  mosquitto_data:

@@ -1,0 +1,16 @@
+[Unit]
+Description=Gadget platform Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/gadget/app
+ExecStart=/usr/bin/docker compose --env-file .env.production -f deploy/linux/docker-compose.production.yml up -d --build
+ExecStop=/usr/bin/docker compose --env-file .env.production -f deploy/linux/docker-compose.production.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+{% extends 'core/portal/base.html' %}
+{% block title %}پیام‌ها · مدیریت گجت{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>پیام‌ها و کمپین‌ها</h1><p class="muted">پیام‌ها فقط در محدودهٔ شرکت‌های مجاز نمایش داده می‌شوند.</p></div><a class="button" href="{% url 'panel-message-create' %}">ساخت پیام جدید</a></div>
+<div class="table-wrap"><table><thead><tr><th>شرکت</th><th>نام</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان ساخت</th><th></th></tr></thead>
+<tbody>{% for campaign in campaigns %}<tr><td>{{ campaign.company }}</td><td>{{ campaign.name }}</td><td>{{ campaign.get_status_display }}</td><td>{{ campaign.scheduled_at|default:'—' }}</td><td>{{ campaign.created_at }}</td><td><a class="button secondary" href="{% url 'panel-message-edit' campaign.pk %}">ویرایش</a></td></tr>{% empty %}<tr><td class="empty" colspan="6">هنوز پیامی ساخته نشده است.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

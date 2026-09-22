@@ -1,4 +1,113 @@
+import hashlib
+
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+
+
+class Company(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "companies"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class CompanyMembership(models.Model):
+    class Role(models.TextChoices):
+        OWNER = "owner", "Platform owner"
+        EMPLOYEE = "employee", "Internal employee"
+        COMPANY_ADMIN = "company_admin", "Company admin"
+        COMPANY_OPERATOR = "company_operator", "Company operator"
+
+    PLATFORM_ROLES = {Role.OWNER, Role.EMPLOYEE}
+    COMPANY_ROLES = {Role.COMPANY_ADMIN, Role.COMPANY_OPERATOR}
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="company_memberships")
+    company = models.ForeignKey(Company, null=True, blank=True, on_delete=models.CASCADE, related_name="memberships")
+    role = models.CharField(max_length=32, choices=Role.choices)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("user", "company"), name="unique_user_company_membership"),
+        ]
+        ordering = ["user__username", "company__name"]
+
+    def clean(self) -> None:
+        if self.role in self.PLATFORM_ROLES and self.company_id:
+            raise ValidationError({"company": "Platform roles must not be assigned to a company."})
+        if self.role in self.COMPANY_ROLES and not self.company_id:
+            raise ValidationError({"company": "Company roles require a company."})
+
+    def __str__(self) -> str:
+        scope = self.company.name if self.company else "Platform"
+        return f"{self.user} — {self.get_role_display()} ({scope})"
+
+
+class ExternalDataSource(models.Model):
+    class SourceType(models.TextChoices):
+        HTTP_API = "http", "HTTP API"
+        TELEGRAM = "telegram", "Telegram"
+        RSS = "rss", "RSS Feed"
+        INTERNAL = "internal", "Internal data"
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="external_data_sources")
+    name = models.CharField(max_length=255)
+    source_type = models.CharField(max_length=64, choices=SourceType.choices, default=SourceType.HTTP_API)
+    display_key = models.CharField(max_length=128)
+    endpoint_url = models.URLField(max_length=500)
+    refresh_interval_seconds = models.PositiveIntegerField(default=900)
+    credential_reference = models.CharField(max_length=128, blank=True)
+    title_path = models.CharField(max_length=255, blank=True)
+    value_path = models.CharField(max_length=255, blank=True)
+    image_path = models.CharField(max_length=255, blank=True)
+    configuration = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["company__name", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=("company", "name"), name="unique_company_external_data_source_name"),
+            models.UniqueConstraint(fields=("company", "display_key"), name="unique_company_external_data_source_display_key"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.company}: {self.name}"
+
+
+class MessageCampaign(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        SCHEDULED = "scheduled", "Scheduled"
+        SENT = "sent", "Sent"
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="message_campaigns")
+    target_devices = models.ManyToManyField("WordPressDevice", related_name="message_campaigns", blank=True)
+    name = models.CharField(max_length=255)
+    message = models.TextField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    scheduled_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="created_message_campaigns")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.company}: {self.name}"
 
 
 class SyncSource(models.TextChoices):
@@ -19,12 +128,26 @@ class SyncEventStatus(models.TextChoices):
 
 
 class WordPressDevice(models.Model):
+    class ProvisioningState(models.TextChoices):
+        UNPROVISIONED = "unprovisioned", "Unprovisioned"
+        PROVISIONED = "provisioned", "Provisioned"
+        SUSPENDED = "suspended", "Suspended"
+
+    company = models.ForeignKey(Company, null=True, blank=True, on_delete=models.SET_NULL, related_name="devices")
     external_id = models.CharField(max_length=128, unique=True)
     customer_external_id = models.CharField(max_length=128, blank=True)
     serial_number = models.CharField(max_length=128, blank=True)
+    hardware_model = models.CharField(max_length=128, blank=True)
     name = models.CharField(max_length=255, blank=True)
     plan = models.CharField(max_length=64, blank=True)
     is_active = models.BooleanField(default=True)
+    provisioning_state = models.CharField(
+        max_length=32,
+        choices=ProvisioningState.choices,
+        default=ProvisioningState.UNPROVISIONED,
+    )
+    device_token_hash = models.CharField(max_length=128, blank=True, editable=False)
+    device_token_created_at = models.DateTimeField(null=True, blank=True, editable=False)
     metadata = models.JSONField(default=dict, blank=True)
     custom_config = models.JSONField(default=dict, blank=True)
     effective_config = models.JSONField(default=dict, blank=True)
@@ -43,6 +166,79 @@ class WordPressDevice(models.Model):
         if plan in {"pro", "vip", "premium"}:
             return "pro"
         return "simple"
+
+
+class FirmwareRelease(models.Model):
+    hardware_model = models.CharField(max_length=128, db_index=True)
+    version = models.CharField(max_length=64)
+    release_notes = models.TextField(blank=True)
+    download_url = models.URLField(max_length=500, blank=True)
+    firmware_file = models.FileField(upload_to="firmware/%Y/%m/", blank=True)
+    checksum_sha256 = models.CharField(max_length=64, blank=True)
+    is_active = models.BooleanField(default=True)
+    is_mandatory = models.BooleanField(default=False)
+    published_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("hardware_model", "version"), name="unique_firmware_model_version"),
+        ]
+        ordering = ["-published_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.hardware_model} {self.version}"
+
+    def clean(self) -> None:
+        if not self.download_url and not self.firmware_file:
+            raise ValidationError("Provide either a firmware upload or a download URL.")
+        if self.download_url and self.firmware_file:
+            raise ValidationError("Use either a firmware upload or a download URL, not both.")
+        if self.download_url and len(self.checksum_sha256) != 64:
+            raise ValidationError({"checksum_sha256": "A SHA-256 checksum is required for a remote download URL."})
+
+    def save(self, *args, **kwargs):
+        if self.firmware_file:
+            digest = hashlib.sha256()
+            if self.firmware_file._committed:
+                self.firmware_file.open("rb")
+                chunks = self.firmware_file.chunks()
+            else:
+                chunks = self.firmware_file.file.chunks()
+            for chunk in chunks:
+                digest.update(chunk)
+            self.checksum_sha256 = digest.hexdigest()
+            if self.firmware_file._committed:
+                self.firmware_file.close()
+        super().save(*args, **kwargs)
+
+
+class FirmwareDeployment(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        DOWNLOADING = "downloading", "Downloading"
+        INSTALLED = "installed", "Installed"
+        FAILED = "failed", "Failed"
+        SKIPPED = "skipped", "Skipped"
+
+    device = models.ForeignKey(WordPressDevice, on_delete=models.CASCADE, related_name="firmware_deployments")
+    release = models.ForeignKey(FirmwareRelease, on_delete=models.PROTECT, related_name="deployments")
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING)
+    reported_version = models.CharField(max_length=64, blank=True)
+    error_message = models.TextField(blank=True)
+    last_reported_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("device", "release"), name="unique_device_firmware_deployment"),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.device.external_id}: {self.release} ({self.status})"
 
 
 class WordPressDataSource(models.Model):
@@ -195,7 +391,7 @@ class ServiceHealth(models.Model):
         ("degraded", "Degraded"),
     ]
 
-    service_name = models.CharField(max_length=64, choices=SERVICE_CHOICES)
+    service_name = models.CharField(max_length=64, choices=SERVICE_CHOICES, unique=True)
     status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="up")
     response_time_ms = models.PositiveIntegerField(default=0)
     last_check_at = models.DateTimeField(auto_now=True)
@@ -204,8 +400,9 @@ class ServiceHealth(models.Model):
     failed_count = models.PositiveIntegerField(default=0)
 
     class Meta:
-        unique_together = ["service_name"]
+        verbose_name = "Service Health"
         verbose_name_plural = "Service Health"
+        ordering = ["service_name"]
 
     def __str__(self) -> str:
         return f"{self.get_service_name_display()} - {self.status}"
@@ -230,6 +427,7 @@ class DeviceStatus(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "Device Status"
         verbose_name_plural = "Device Status"
 
     def __str__(self) -> str:

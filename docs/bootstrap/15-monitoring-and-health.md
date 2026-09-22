@@ -2,7 +2,7 @@
 
 **Status:** Real-time operational visibility for services and devices  
 **Audience:** System operators, DevOps, developers  
-**Last Updated:** 2025
+**Last Updated:** 2026-09-22
 
 ## Overview
 
@@ -12,6 +12,11 @@ The gadget platform provides two-tier health monitoring:
 2. **Device Status**: Individual device online/offline state, firmware version, battery, signal strength
 
 Both are visible in Django Admin and queryable via REST API.
+
+Run `docker compose exec api python manage.py check_services` to probe the API,
+database, Redis, MQTT broker, and Celery worker and save a fresh status snapshot.
+The public health endpoint considers a result stale after 180 seconds by default;
+set `HEALTH_CHECK_STALE_AFTER_SECONDS` to change that threshold.
 
 ---
 
@@ -63,44 +68,21 @@ class ServiceHealth(models.Model):
 Returns overall system health plus per-service status:
 
 ```bash
-curl http://localhost:8000/api/v1/health/ -H "Authorization: Token YOUR_TOKEN"
+curl http://localhost:8000/api/v1/health/
 ```
 
 Response:
 ```json
 {
-  "status": "ok",  // "ok", "degraded", or "error"
+    "status": "ok",  // "ok", "degraded", "down", or "unknown"
   "service": "gadget-api",
   "services": {
-    "API": {
+        "api": {
+            "label": "API",
       "status": "up",
       "response_time_ms": 45,
-      "last_check": "2025-01-15T14:32:10.123456Z",
-      "failed_count": 0
-    },
-    "Database": {
-      "status": "up",
-      "response_time_ms": 12,
-      "last_check": "2025-01-15T14:32:05.987654Z",
-      "failed_count": 0
-    },
-    "Redis": {
-      "status": "up",
-      "response_time_ms": 8,
-      "last_check": "2025-01-15T14:32:08.456789Z",
-      "failed_count": 0
-    },
-    "MQTT": {
-      "status": "degraded",
-      "response_time_ms": 523,
-      "last_check": "2025-01-15T14:31:55.111111Z",
-      "failed_count": 3
-    },
-    "Celery Worker": {
-      "status": "up",
-      "response_time_ms": 89,
-      "last_check": "2025-01-15T14:31:42.222222Z",
-      "failed_count": 0
+            "last_check_at": "2026-09-22T14:32:10.123456Z",
+            "stale": false
     }
   }
 }
@@ -149,7 +131,7 @@ class DeviceStatus(models.Model):
 
 **Option B: View from Status Dashboard**
 
-1. Click **"Device Statuses"** in the left sidebar
+1. Click **"Device Status"** in the left sidebar
 2. See all devices with their current status and last contact time
 3. Use the filter panel to show only:
    - Online devices
@@ -176,7 +158,9 @@ Devices periodically call the `device_heartbeat` endpoint to report their operat
 **Endpoint:** `POST /api/v1/devices/{external_id}/heartbeat/`
 
 **Required Headers:**
-None (device is identified by external_id in URL)
+`X-Device-Token`: the plaintext token emitted once by `provision_device`. The
+server stores only a salted verifier and rejects unprovisioned, suspended, or
+inactive devices.
 
 **Request Body:**
 
@@ -186,6 +170,7 @@ None (device is identified by external_id in URL)
   "firmware_version": "1.0.2",
   "battery_level": 85,
   "signal_strength": -55,
+    "config_version": 3,
   "error_message": ""
 }
 ```
@@ -193,8 +178,9 @@ None (device is identified by external_id in URL)
 **Fields:**
 - `status` (required): One of `online`, `offline`, `updating`, `error`
 - `firmware_version` (optional): Version string, e.g., "1.0.2"
-- `battery_level` (optional): 0-100 (clamped automatically)
+- `battery_level` (optional): Integer from 0 to 100
 - `signal_strength` (optional): Received signal strength indicator (dBm, negative)
+- `config_version` (optional): Last display configuration version applied by the device
 - `error_message` (optional): Human-readable error if status is "error"
 
 **Example (cURL):**
@@ -202,6 +188,7 @@ None (device is identified by external_id in URL)
 ```bash
 curl -X POST http://localhost:8000/api/v1/devices/ESP32-ABC123/heartbeat/ \
   -H "Content-Type: application/json" \
+    -H "X-Device-Token: DEVICE_TOKEN" \
   -d '{
     "status": "online",
     "firmware_version": "1.0.2",
@@ -217,7 +204,7 @@ curl -X POST http://localhost:8000/api/v1/devices/ESP32-ABC123/heartbeat/ \
   "acknowledged": true,
   "device_id": "ESP32-ABC123",
   "status": "online",
-  "last_heartbeat": "2025-01-15T14:32:01.123456Z"
+    "last_heartbeat_at": "2026-09-22T14:32:01.123456Z"
 }
 ```
 
@@ -225,6 +212,8 @@ curl -X POST http://localhost:8000/api/v1/devices/ESP32-ABC123/heartbeat/ \
 
 - **404 Not Found**: Device `external_id` does not exist
 - **400 Bad Request**: Invalid JSON payload
+- **401 Unauthorized**: Missing or invalid device token
+- **403 Forbidden**: Device is inactive or not provisioned
 
 ### Recommended Heartbeat Schedule
 
@@ -261,18 +250,20 @@ def heartbeat():
 
 Django Admin provides a real-time view:
 1. Open **Service Health** tab → see infrastructure status
-2. Open **Device Statuses** tab → see all devices' latest state
+2. Open **Device Status** tab → see all devices' latest state
 3. Refresh (⌘R or Ctrl+R) to update
 
-### Automated Health Checks (Future)
+### Automated Health Checks
 
-Create a Celery task that periodically:
+Celery Beat runs the `core.tasks.check_service_health` task every minute. It:
 1. Pings DB, Redis, MQTT broker
 2. Checks worker process status
 3. Writes results to ServiceHealth table
 4. Alerts if status flips from "up" to "down"
 
-**Skeleton (services.py):**
+The probe implementation is in `core.monitoring`; it can also be triggered manually with `python manage.py check_services`.
+
+**Task shape:**
 
 ```python
 from celery import shared_task
@@ -426,10 +417,10 @@ def alert_device_offline(sender, instance, **kwargs):
 - ✅ Start services: `make up`
 - ✅ Visit Django Admin: http://localhost:8000/admin/
 - ✅ Check Service Health dashboard
-- ✅ Check Device Statuses dashboard
+- ✅ Check Device Status dashboard
 - ✅ Test device heartbeat endpoint (curl example above)
 - ✅ Verify heartbeat updates DeviceStatus in real-time
-- (Future) ✅ Set up Celery health check task
+- ✅ Celery Beat checks services every minute
 - (Future) ✅ Configure Prometheus scraper
 - (Future) ✅ Add Slack webhook for critical alerts
 
@@ -438,15 +429,9 @@ def alert_device_offline(sender, instance, **kwargs):
 ## 8. Troubleshooting
 
 ### "No ServiceHealth records" after service startup
-- ServiceHealth records are created manually (for now)
-- Create them in Django Admin or via shell:
-```python
-from core.models import ServiceHealth
-ServiceHealth.objects.create(service_name="api", status="up")
-ServiceHealth.objects.create(service_name="db", status="up")
-ServiceHealth.objects.create(service_name="redis", status="up")
-ServiceHealth.objects.create(service_name="mqtt", status="up")
-ServiceHealth.objects.create(service_name="worker", status="up")
+- Wait one minute for Celery Beat, or trigger a check manually:
+```bash
+docker compose exec api python manage.py check_services
 ```
 
 ### Device heartbeat endpoint returns 404
@@ -461,27 +446,16 @@ ServiceHealth.objects.create(service_name="worker", status="up")
 - Refresh Django Admin page to see latest status
 
 ### Service status stuck on "up" but service is down
-- Automated health checks not yet implemented (see Celery task skeleton)
-- For now, manually update status in Django Admin
-- Or POST to seed the data:
-
-```python
-from django.utils import timezone
-from core.models import ServiceHealth
-ServiceHealth.objects.filter(service_name="redis").update(
-    status="down",
-    error_message="Connection timeout",
-    last_check_at=timezone.now()
-)
-```
+- Verify that both `worker` and `beat` containers are running.
+- Trigger a fresh probe with `python manage.py check_services`.
+- The endpoint marks a result as down if it has become stale.
 
 ---
 
 ## Next Steps
 
-1. **Deploy health checks**: Implement Celery task to sample all services every minute
-2. **Export metrics**: Wire ServiceHealth → Prometheus for external monitoring
-3. **Build dashboard**: Create custom Django view (not just Admin) for NOC/KPI display
-4. **Alert integration**: Send Slack/PagerDuty alerts when services/devices flip states
-5. **Historical trending**: Keep 30-day rolling window of health metrics for capacity planning
+1. **Export metrics**: Wire ServiceHealth → Prometheus for external monitoring
+2. **Build dashboard**: Create custom Django view (not just Admin) for NOC/KPI display
+3. **Alert integration**: Send Slack/PagerDuty alerts when services/devices flip states
+4. **Historical trending**: Keep 30-day rolling window of health metrics for capacity planning
 

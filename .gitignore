@@ -13,3 +13,5 @@ __pycache__/
 coverage.xml
 htmlcov/
 node_modules/
+data/media/*
+!data/media/.gitkeep

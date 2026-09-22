@@ -13,6 +13,7 @@ from core.models import (
     SyncEventStatus,
     SyncNotification,
     SyncSource,
+    UITemplate,
     WordPressDataSource,
     WordPressDevice,
     WordPressSyncEvent,
@@ -105,11 +106,59 @@ def _extract_custom_config(payload: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _active_template_config(plan: str) -> dict[str, Any]:
+    """Serialize the active database template into the device UI contract."""
+    template = (
+        UITemplate.objects.filter(plan_type=plan, is_active=True)
+        .prefetch_related("pages__elements")
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+    if template is None:
+        return {}
+
+    pages = []
+    for page in template.pages.filter(is_active=True):
+        elements = [
+            {
+                "type": element.element_type,
+                "label": element.label,
+                "source_key": element.source_key,
+                "position": {"x": element.x, "y": element.y, "width": element.width, "height": element.height},
+                "font_size": element.font_size,
+                "color": element.color,
+                "style": element.style,
+                "z_index": element.z_index,
+                "config": element.config,
+            }
+            for element in page.elements.filter(is_visible=True)
+        ]
+        pages.append(
+            {
+                "key": page.page_key,
+                "type": page.page_type,
+                "priority": page.priority,
+                "refresh_interval_ms": page.refresh_interval_ms,
+                "visible_when": page.visible_when,
+                "elements": elements,
+            }
+        )
+    return {
+        "template": {"name": template.name, "version": template.version},
+        "theme": template.default_theme,
+        "screen": template.default_screen,
+        "rules": template.default_rules,
+        "pages": pages,
+    }
+
+
 def build_effective_display_config(*, plan: str, custom_config: dict[str, Any]) -> dict[str, Any]:
     normalized_plan = _normalize_plan(plan)
+    template_config = _active_template_config(normalized_plan)
     if normalized_plan == "simple":
-        return SIMPLE_PLAN_FIXED_CONFIG
-    merged = _deep_merge(PRO_PLAN_BASE_CONFIG, custom_config)
+        return _deep_merge(SIMPLE_PLAN_FIXED_CONFIG, template_config)
+    merged = _deep_merge(PRO_PLAN_BASE_CONFIG, template_config)
+    merged = _deep_merge(merged, custom_config)
     merged["plan"] = "pro"
     merged["ui_version"] = 1
     return merged
@@ -139,6 +188,16 @@ def verify_wordpress_signature(*, body: bytes, timestamp: str, signature: str, s
     signed_payload = f"{timestamp}.".encode("utf-8") + body
     expected = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
+
+
+def is_wordpress_timestamp_fresh(*, timestamp: str, max_age_seconds: int) -> bool:
+    """Reject malformed, future, and replayed webhook timestamps."""
+    try:
+        received_at = int(timestamp)
+    except (TypeError, ValueError):
+        return False
+    age_seconds = int(datetime.now(timezone.utc).timestamp()) - received_at
+    return 0 <= age_seconds <= max_age_seconds
 
 
 def _notify_change(*, category: str, title: str, message: str, payload: dict[str, Any]) -> None:
@@ -188,13 +247,13 @@ def _upsert_device(payload: dict[str, Any]) -> tuple[WordPressDevice, str, bool]
     defaults = {
         "customer_external_id": str(payload.get("customer_external_id") or payload.get("customer_id") or "").strip(),
         "serial_number": str(payload.get("serial_number") or "").strip(),
+        "hardware_model": str(payload.get("hardware_model") or "").strip(),
         "name": str(payload.get("name") or "").strip(),
         "plan": normalized_plan,
         "is_active": bool(payload.get("is_active", True)),
         "metadata": payload.get("metadata") or {},
         "custom_config": custom_config,
         "effective_config": build_effective_display_config(plan=normalized_plan, custom_config=custom_config),
-        "ui_version": 1,
         "last_wordpress_updated_at": _parse_datetime(payload.get("updated_at") or payload.get("last_updated_at")),
     }
 
@@ -204,6 +263,7 @@ def _upsert_device(payload: dict[str, Any]) -> tuple[WordPressDevice, str, bool]
 
     changed = False
     plan_changed = False
+    config_changed = False
     for field, new_value in defaults.items():
         old_value = getattr(instance, field)
         if old_value != new_value:
@@ -211,8 +271,12 @@ def _upsert_device(payload: dict[str, Any]) -> tuple[WordPressDevice, str, bool]
             changed = True
             if field == "plan":
                 plan_changed = True
+            if field in {"plan", "custom_config", "effective_config"}:
+                config_changed = True
 
     if changed:
+        if config_changed:
+            instance.ui_version += 1
         instance.save()
         return instance, "updated", plan_changed
     return instance, "unchanged", False
@@ -310,6 +374,10 @@ def process_wordpress_payload(*, payload: dict[str, Any], source: str) -> dict[s
                 "source": source,
             },
         )
+        if entity_type == SyncEntityType.DEVICE and device.is_active and device.provisioning_state == "provisioned":
+            from core.tasks import publish_device_config_changed
+
+            publish_device_config_changed.delay(device.external_id, device.ui_version)
 
     return {
         "event": event_type,

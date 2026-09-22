@@ -1,0 +1,12 @@
+{% extends 'core/portal/base.html' %}
+{% block title %}داشبورد · مدیریت گجت{% endblock %}
+{% block content %}
+<h1>داشبورد</h1>
+<p class="muted">اطلاعاتی که حساب شما اجازهٔ مشاهدهٔ آن را دارد.</p>
+<div class="card-grid">
+  <section class="card"><div class="number">{{ device_count }}</div><div>دستگاه‌ها</div></section>
+  <section class="card"><div class="number">{{ campaign_count }}</div><div>پیام‌ها</div></section>
+  <section class="card"><div class="number">{{ source_count }}</div><div>منابع داده</div></section>
+  <section class="card"><div class="number">{{ companies|length }}</div><div>{% if is_platform_user %}شرکت‌های فعال{% else %}شرکت‌های شما{% endif %}</div></section>
+</div>
+{% endblock %}
