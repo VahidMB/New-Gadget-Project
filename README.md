@@ -4,6 +4,7 @@ Backend and infrastructure baseline for an ESP32 gadget platform.
 
 ## Detailed guides (separate files)
 - Plain-language Linux deployment guide (Persian): [راهنمای-ساده-و-کامل.md](%D8%B1%D8%A7%D9%87%D9%86%D9%85%D8%A7%DB%8C-%D8%B3%D8%A7%D8%AF%D9%87-%D9%88-%DA%A9%D8%A7%D9%85%D9%84.md)
+- Linux test + Mac browser guide (Persian): [راهنمای-تست-سرور-و-مرورگر.md](%D8%B1%D8%A7%D9%87%D9%86%D9%85%D8%A7%DB%8C-%D8%AA%D8%B3%D8%AA-%D8%B3%D8%B1%D9%88%D8%B1-%D9%88-%D9%85%D8%B1%D9%88%D8%B1%DA%AF%D8%B1.md)
 - Graphical firmware update guide (Persian): [راهنمای-آپدیت-فریمور.md](%D8%B1%D8%A7%D9%87%D9%86%D9%85%D8%A7%DB%8C-%D8%A2%D9%BE%D8%AF%DB%8C%D8%AA-%D9%81%D8%B1%DB%8C%D9%85%D9%88%D8%B1.md)
 - Complete server and integration guide (Persian): [docs/راهنمای-جامع-سرور-و-یکپارچه‌سازی.md](docs/%D8%B1%D8%A7%D9%87%D9%86%D9%85%D8%A7%DB%8C-%D8%AC%D8%A7%D9%85%D8%B9-%D8%B3%D8%B1%D9%88%D8%B1-%D9%88-%DB%8C%DA%A9%D9%BE%D8%A7%D8%B1%DA%86%D9%87%E2%80%8C%D8%B3%D8%A7%D8%B2%DB%8C.md)
 - Main index: `docs/bootstrap/00-index.md`

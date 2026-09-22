@@ -1,0 +1,87 @@
+services:
+  api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../../.env.test
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mqtt:
+        condition: service_started
+    ports:
+      # Deliberately private: access it from the Mac via an SSH tunnel.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ../../data/media:/app/media
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8000"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: celery -A gadget_server worker --loglevel=INFO
+    restart: unless-stopped
+    env_file:
+      - ../../.env.test
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  beat:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: celery -A gadget_server beat --loglevel=INFO
+    restart: unless-stopped
+    env_file:
+      - ../../.env.test
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_test_data:/data
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    volumes:
+      - ../../infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_test_data:/mosquitto/data
+
+volumes:
+  postgres_test_data:
+  redis_test_data:
+  mosquitto_test_data:
