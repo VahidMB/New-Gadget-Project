@@ -109,6 +109,10 @@ CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 HEALTH_CHECK_STALE_AFTER_SECONDS = int(os.getenv("HEALTH_CHECK_STALE_AFTER_SECONDS", "180"))
 DEVICE_HEARTBEAT_STALE_AFTER_SECONDS = int(os.getenv("DEVICE_HEARTBEAT_STALE_AFTER_SECONDS", "300"))
 CELERY_BEAT_SCHEDULE = {
+    "retry-config-notifications": {
+        "task": "core.tasks.retry_pending_config_notifications",
+        "schedule": 60.0,
+    },
     "check-service-health": {
         "task": "core.tasks.check_service_health",
         "schedule": 60.0,

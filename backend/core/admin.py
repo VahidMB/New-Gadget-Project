@@ -146,9 +146,9 @@ class WordPressDeviceAdmin(CompanyScopedAdmin):
     list_display = ("external_id", "company", "name", "hardware_model", "provisioning_state", "plan", "is_active", "ui_version", "last_synced_at")
     search_fields = ("external_id", "name", "serial_number", "customer_external_id", "hardware_model")
     list_filter = ("provisioning_state", "hardware_model", "plan", "is_active", "ui_version")
-    list_editable = ("name", "plan", "is_active", "ui_version")
+    list_editable = ("name", "plan", "is_active")
     inlines = [DeviceProfileInline, DeviceStatusInline, FirmwareDeploymentInline]
-    readonly_fields = ("device_token_hash", "device_token_created_at", "last_synced_at", "created_at", "updated_at", "effective_config")
+    readonly_fields = ("device_token_hash", "device_token_created_at", "last_synced_at", "created_at", "updated_at", "effective_config", "ui_version")
     fieldsets = (
         ("Identity", {"fields": ("company", "external_id", "customer_external_id", "serial_number", "hardware_model", "name")}),
         ("Provisioning", {"fields": ("provisioning_state", "device_token_hash", "device_token_created_at")}),

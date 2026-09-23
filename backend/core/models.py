@@ -152,6 +152,7 @@ class WordPressDevice(models.Model):
     custom_config = models.JSONField(default=dict, blank=True)
     effective_config = models.JSONField(default=dict, blank=True)
     ui_version = models.PositiveIntegerField(default=1)
+    config_sync_pending = models.BooleanField(default=False, editable=False)
     last_wordpress_updated_at = models.DateTimeField(null=True, blank=True)
     last_synced_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -163,7 +164,7 @@ class WordPressDevice(models.Model):
     @property
     def normalized_plan(self) -> str:
         plan = (self.plan or "").strip().lower()
-        if plan in {"pro", "vip", "premium"}:
+        if plan in {"pro", "vip", "premium", "professional"}:
             return "pro"
         return "simple"
 

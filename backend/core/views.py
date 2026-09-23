@@ -9,6 +9,8 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from core.access import is_platform_user
+from core.firmware import select_firmware_release
 from core.device_auth import check_device_token
 from core.metrics import render_metrics
 from core.models import DeviceStatus, FirmwareDeployment, FirmwareRelease, ServiceHealth, SyncNotification, WordPressDevice
@@ -112,7 +114,14 @@ def wordpress_pull_sync(request):
 
 @api_view(["GET"])
 def wordpress_notifications(request):
-    limit = min(int(request.query_params.get("limit", 50)), 200)
+    if not is_platform_user(request.user):
+        return Response({"detail": "Platform access required"}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        limit = int(request.query_params.get("limit", 50))
+    except (TypeError, ValueError):
+        return Response({"detail": "limit must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+    if not 1 <= limit <= 200:
+        return Response({"detail": "limit must be between 1 and 200"}, status=status.HTTP_400_BAD_REQUEST)
     notifications = SyncNotification.objects.all()[:limit]
     data = [
         {
@@ -219,11 +228,7 @@ def device_firmware_update_check(request, external_id: str):
     current_version = request.query_params.get("firmware_version", "")[:64]
     if not current_version:
         current_version = DeviceStatus.objects.filter(device=device).values_list("firmware_version", flat=True).first() or ""
-    release = (
-        FirmwareRelease.objects.filter(hardware_model=device.hardware_model, is_active=True)
-        .exclude(version=current_version)
-        .first()
-    )
+    release = select_firmware_release(device.hardware_model, current_version)
     if release is None:
         return Response({"update_available": False, "firmware_version": current_version})
 
