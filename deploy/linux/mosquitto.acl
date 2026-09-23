@@ -1,0 +1,7 @@
+# The backend uses this dedicated MQTT account. Never share it with devices.
+user gadget-backend
+topic write gadget/v1/devices/+/commands/#
+
+# Each device MQTT username must equal its external_id.
+# Broker password credentials are separate from X-Device-Token.
+pattern read gadget/v1/devices/%u/commands/#

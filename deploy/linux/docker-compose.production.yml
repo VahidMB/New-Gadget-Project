@@ -82,6 +82,7 @@ services:
       - ./mosquitto.production.conf:/mosquitto/config/mosquitto.conf:ro
       - ${MQTT_CERTS_DIR}:/mosquitto/certs:ro
       - ${MQTT_PASSWORD_FILE}:/mosquitto/config/passwordfile:ro
+      - ./mosquitto.acl:/mosquitto/config/aclfile:ro
       - mosquitto_data:/mosquitto/data
 
 volumes:

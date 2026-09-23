@@ -161,6 +161,8 @@ class FirmwareUploadForm(forms.ModelForm):
 
     def clean_firmware_file(self):
         firmware_file = self.cleaned_data["firmware_file"]
+        if not firmware_file:
+            raise forms.ValidationError("A compiled .bin firmware file is required.")
         if not firmware_file.name.lower().endswith(".bin"):
             raise forms.ValidationError("Only compiled .bin firmware files are accepted.")
         if firmware_file.size > settings.MAX_FIRMWARE_UPLOAD_BYTES:

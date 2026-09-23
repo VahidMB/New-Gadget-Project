@@ -253,7 +253,6 @@ def _upsert_device(payload: dict[str, Any]) -> tuple[WordPressDevice, str, bool]
         "is_active": bool(payload.get("is_active", True)),
         "metadata": payload.get("metadata") or {},
         "custom_config": custom_config,
-        "effective_config": build_effective_display_config(plan=normalized_plan, custom_config=custom_config),
         "last_wordpress_updated_at": _parse_datetime(payload.get("updated_at") or payload.get("last_updated_at")),
     }
 
@@ -263,7 +262,6 @@ def _upsert_device(payload: dict[str, Any]) -> tuple[WordPressDevice, str, bool]
 
     changed = False
     plan_changed = False
-    config_changed = False
     for field, new_value in defaults.items():
         old_value = getattr(instance, field)
         if old_value != new_value:
@@ -271,12 +269,8 @@ def _upsert_device(payload: dict[str, Any]) -> tuple[WordPressDevice, str, bool]
             changed = True
             if field == "plan":
                 plan_changed = True
-            if field in {"plan", "custom_config", "effective_config"}:
-                config_changed = True
 
     if changed:
-        if config_changed:
-            instance.ui_version += 1
         instance.save()
         return instance, "updated", plan_changed
     return instance, "unchanged", False
@@ -374,10 +368,6 @@ def process_wordpress_payload(*, payload: dict[str, Any], source: str) -> dict[s
                 "source": source,
             },
         )
-        if entity_type == SyncEntityType.DEVICE and device.is_active and device.provisioning_state == "provisioned":
-            from core.tasks import publish_device_config_changed
-
-            publish_device_config_changed.delay(device.external_id, device.ui_version)
 
     return {
         "event": event_type,

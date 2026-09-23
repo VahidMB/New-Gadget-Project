@@ -9,3 +9,4 @@ prometheus-client==0.21.0
 pytest==8.3.3
 pytest-django==4.9.0
 ruff==0.6.9
+packaging==24.2

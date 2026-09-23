@@ -17,7 +17,6 @@ from core.forms import (
     PortalUserForm,
 )
 from core.models import Company, CompanyMembership, ExternalDataSource, FirmwareRelease, MessageCampaign, WordPressDevice
-from core.services import build_effective_display_config
 
 
 def _require_platform_owner(request):
@@ -93,7 +92,6 @@ def device_create(request):
         form = DeviceForm(request.POST)
         if form.is_valid():
             device = form.save(commit=False)
-            device.effective_config = build_effective_display_config(plan=device.plan, custom_config={})
             device.save()
             messages.success(request, "دستگاه ایجاد شد.")
             return redirect("panel-device-detail", pk=device.pk)
