@@ -1,9 +1,12 @@
 import os
+import secrets
+from core.secrets import bootstrap_value
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-dev-key")
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY") or bootstrap_value("django.key", lambda: secrets.token_urlsafe(48))
+GADGET_MASTER_KEY = os.getenv("GADGET_MASTER_KEY", "")
 DEBUG = os.getenv("DJANGO_DEBUG", "0") == "1"
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if h.strip()]
 
@@ -20,10 +23,12 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "core.middleware.PlatformMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -66,7 +71,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "fa"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
@@ -109,6 +114,9 @@ CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 HEALTH_CHECK_STALE_AFTER_SECONDS = int(os.getenv("HEALTH_CHECK_STALE_AFTER_SECONDS", "180"))
 DEVICE_HEARTBEAT_STALE_AFTER_SECONDS = int(os.getenv("DEVICE_HEARTBEAT_STALE_AFTER_SECONDS", "300"))
 CELERY_BEAT_SCHEDULE = {
+    "publish-content-hints": {"task": "core.platform_tasks.publish_content_hints", "schedule": 5.0},
+    "refresh-source-values": {"task": "core.platform_tasks.refresh_sources", "schedule": 5.0},
+    "expire-content": {"task": "core.platform_tasks.expire_content", "schedule": 30.0},
     "retry-config-notifications": {
         "task": "core.tasks.retry_pending_config_notifications",
         "schedule": 60.0,
@@ -127,7 +135,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "dispatch-message-campaigns": {
         "task": "core.tasks.dispatch_due_message_campaigns",
-        "schedule": 60.0,
+        "schedule": 5.0,
     },
 }
 
@@ -136,3 +144,13 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "1") == "1"
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": os.getenv("CONTENT_CACHE_URL", "redis://redis:6379/1")}}
+WHITENOISE_USE_FINDERS = True
+
+# HTTP is allowed only in the explicitly local guided stack (loopback binding).
+if os.getenv("GADGET_LOCAL_HTTP") == "1":
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+
+SECURE_REDIRECT_EXEMPT = [r"^api/v1/ping/$"]

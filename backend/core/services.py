@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib import error, parse, request
 
-from django.conf import settings
 from django.utils import timezone as django_timezone
+
+from core.runtime import runtime_setting
 
 from core.models import (
     SyncEntityType,
@@ -158,7 +159,13 @@ def build_effective_display_config(*, plan: str, custom_config: dict[str, Any]) 
     if normalized_plan == "simple":
         return _deep_merge(SIMPLE_PLAN_FIXED_CONFIG, template_config)
     merged = _deep_merge(PRO_PLAN_BASE_CONFIG, template_config)
-    merged = _deep_merge(merged, custom_config)
+    from core.access import rule_for
+    rule = rule_for(normalized_plan)
+    allowed_custom = dict(custom_config) if rule.can_customize_ui else {}
+    if not rule.can_add_pages:
+        allowed_custom.pop("pages", None)
+        allowed_custom.pop("screens", None)
+    merged = _deep_merge(merged, allowed_custom)
     merged["plan"] = "pro"
     merged["ui_version"] = 1
     return merged
@@ -206,10 +213,10 @@ def _notify_change(*, category: str, title: str, message: str, payload: dict[str
         title=title,
         message=message,
         payload=payload,
-        delivery_target=settings.SYNC_NOTIFY_WEBHOOK_URL,
+        delivery_target=runtime_setting("SYNC_NOTIFY_WEBHOOK_URL"),
     )
 
-    target_url = settings.SYNC_NOTIFY_WEBHOOK_URL
+    target_url = runtime_setting("SYNC_NOTIFY_WEBHOOK_URL")
     if not target_url:
         return
 
@@ -255,6 +262,29 @@ def _upsert_device(payload: dict[str, Any]) -> tuple[WordPressDevice, str, bool]
         "custom_config": custom_config,
         "last_wordpress_updated_at": _parse_datetime(payload.get("updated_at") or payload.get("last_updated_at")),
     }
+
+    if "company_slug" in payload:
+        from core.models import Company, CompanyMembership
+        from django.contrib.auth import get_user_model
+        company = Company.objects.filter(slug=payload["company_slug"]).first()
+        if company is None:
+            raise ValueError("Unknown company_slug; create the account in the admin panel first")
+        defaults["company"] = company
+        username = payload.get("assigned_username")
+        if username:
+            user = get_user_model().objects.filter(username=username, is_active=True).first()
+            if user is None or not CompanyMembership.objects.filter(company=company, user=user, is_active=True).exists():
+                raise ValueError("Assigned user must have active membership in the device company")
+            defaults["assigned_user"] = user
+        elif "assigned_username" in payload:
+            defaults["assigned_user"] = None
+        else:
+            current = WordPressDevice.objects.filter(external_id=external_id).first()
+            if current and current.company_id != company.pk:
+                defaults["assigned_user"] = None
+    for field in ("recipient_name", "recipient_contact", "group_name"):
+        if field in payload:
+            defaults[field] = str(payload[field])[:100]
 
     instance, created = WordPressDevice.objects.get_or_create(external_id=external_id, defaults=defaults)
     if created:
@@ -349,7 +379,7 @@ def process_wordpress_payload(*, payload: dict[str, Any], source: str) -> dict[s
         entity_type=entity_type,
         entity_external_id=entity_external_id,
         source=source,
-        payload=payload,
+        payload={},  # Keep metadata and hash only, never raw incoming values or credentials.
         payload_hash=_json_hash(payload),
         status=status,
         message=message,
@@ -381,8 +411,8 @@ def process_wordpress_payload(*, payload: dict[str, Any], source: str) -> dict[s
 
 def _fetch_json(url: str) -> Any:
     headers = {"Accept": "application/json"}
-    if settings.WORDPRESS_API_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.WORDPRESS_API_TOKEN}"
+    if runtime_setting("WORDPRESS_API_TOKEN"):
+        headers["Authorization"] = f"Bearer {runtime_setting("WORDPRESS_API_TOKEN")}"
 
     req = request.Request(url, headers=headers, method="GET")
     with request.urlopen(req, timeout=15) as response:
@@ -397,12 +427,12 @@ def _absolute_url(base: str, path_or_url: str) -> str:
 
 
 def run_wordpress_pull_sync() -> dict[str, Any]:
-    base_url = settings.WORDPRESS_API_BASE_URL.strip()
+    base_url = runtime_setting("WORDPRESS_API_BASE_URL").strip()
     if not base_url:
         raise ValueError("WORDPRESS_API_BASE_URL is not configured")
 
-    devices_url = _absolute_url(base_url, settings.WORDPRESS_DEVICES_ENDPOINT)
-    sources_url = _absolute_url(base_url, settings.WORDPRESS_DATA_SOURCES_ENDPOINT)
+    devices_url = _absolute_url(base_url, runtime_setting("WORDPRESS_DEVICES_ENDPOINT"))
+    sources_url = _absolute_url(base_url, runtime_setting("WORDPRESS_DATA_SOURCES_ENDPOINT"))
 
     devices_data = _fetch_json(devices_url)
     sources_data = _fetch_json(sources_url)

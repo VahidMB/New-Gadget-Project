@@ -42,6 +42,27 @@ def refresh_device_config(device_id, *, created=False):
                 profile_custom = _deep_merge(profile_custom, profile.custom_config)
             custom = _deep_merge(custom, profile_custom)
         effective = build_effective_display_config(plan=device.plan, custom_config=custom)
+        from core.models import DevicePreference
+        from core.access import rule_for
+        from core.content import device_content
+        rule = rule_for(device.normalized_plan)
+        preference = DevicePreference.objects.filter(device=device).first()
+        if preference:
+            palettes = {"navy": {"name": "navy", "primary_color": "#3885ff", "background_color": "#233b55", "secondary_color": "#ffffff"}, "light": {"name": "light", "primary_color": "#2865dd", "background_color": "#ffffff", "secondary_color": "#21354e"}, "carbon": {"name": "carbon", "primary_color": "#4499ff", "background_color": "#253747", "secondary_color": "#ffffff"}}
+            if rule.can_change_theme:
+                effective["theme"] = palettes.get(preference.theme, palettes["navy"]).copy()
+            if rule.can_customize_ui and preference.custom_primary:
+                effective.setdefault("theme", {})["primary_color"] = preference.custom_primary
+            effective["rotation_seconds"] = preference.rotation_seconds
+            effective["live_updates"] = preference.live_updates
+        effective["data_refresh_seconds"] = max(5, rule.min_refresh_seconds)
+        effective["selected_sources"] = [source["key"] for source in device_content(device)["sources"]]
+        effective["rules"] = {"max_sources": rule.max_sources, "max_telegram_sources": rule.max_telegram_sources, "max_pages": rule.max_pages, "max_elements_per_page": rule.max_elements_per_page, "can_customize_ui": rule.can_customize_ui}
+        if isinstance(effective.get("pages"), list):
+            effective["pages"] = effective["pages"][:rule.max_pages]
+            for page in effective["pages"]:
+                if isinstance(page, dict) and isinstance(page.get("elements"), list):
+                    page["elements"] = page["elements"][:rule.max_elements_per_page]
         if created or device.effective_config != effective:
             device.effective_config = effective
             if not created:

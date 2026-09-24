@@ -69,11 +69,11 @@ def test_device_heartbeat_updates_device_status() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "online"
     device = WordPressDevice.objects.get(external_id="esp32-100")
-    assert device.status.battery_level == 85
+    assert not hasattr(device.status, "battery_level")
     assert device.status.last_config_version == 3
 
 
-def test_device_heartbeat_rejects_invalid_battery_level() -> None:
+def test_device_heartbeat_ignores_legacy_battery_field() -> None:
     _, token = _provisioned_device("esp32-101")
 
     response = APIClient().post(
@@ -83,7 +83,7 @@ def test_device_heartbeat_rejects_invalid_battery_level() -> None:
         HTTP_X_DEVICE_TOKEN=token,
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 200
 
 
 def test_device_heartbeat_requires_a_valid_token() -> None:
@@ -114,7 +114,8 @@ def test_provision_command_prints_a_token_once_and_stores_only_its_hash() -> Non
 def test_stale_devices_are_marked_offline(settings) -> None:
     from core.monitoring import mark_stale_devices_offline
 
-    settings.DEVICE_HEARTBEAT_STALE_AFTER_SECONDS = 60
+    from core.models import PlatformSettings
+    PlatformSettings.objects.create(heartbeat_timeout=60)
     device, _ = _provisioned_device("esp32-103")
     DeviceStatus.objects.create(device=device, status="online", last_heartbeat_at=timezone.now() - timedelta(seconds=61))
 

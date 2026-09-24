@@ -10,3 +10,8 @@ pytest==8.3.3
 pytest-django==4.9.0
 ruff==0.6.9
 packaging==24.2
+cryptography==44.0.3
+beautifulsoup4==4.13.4
+regex==2024.11.6
+psutil==6.1.1
+whitenoise==6.9.0

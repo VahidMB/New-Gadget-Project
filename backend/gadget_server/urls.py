@@ -2,8 +2,41 @@ from django.contrib import admin
 from django.urls import include, path
 
 from core import portal_views
+from core import console_views as console
+from django.shortcuts import redirect
 
 urlpatterns = [
+    path("", lambda request: redirect("panel-dashboard")),
+    path("setup/", console.setup, name="setup"),
+    path("panel/devices/bulk/", console.device_bulk, name="panel-device-bulk"),
+    path("panel/memberships/<int:pk>/edit/", console.membership_editor, name="panel-membership-edit"),
+    path("panel/live/", console.dashboard_data, name="panel-live"),
+    path("panel/devices/<int:pk>/preferences/", console.preferences, name="panel-preferences"),
+    path("panel/data-sources/<int:pk>/refresh/", console.source_refresh, name="panel-source-refresh"),
+    path("panel/companies/<int:pk>/edit/", console.company_editor, name="panel-company-edit"),
+    path("panel/users/<int:pk>/edit/", console.user_editor, name="panel-user-edit"),
+    path("panel/prices/", console.price_lists, name="panel-price-list"),
+    path("panel/prices/new/", console.price_editor, name="panel-price-create"),
+    path("panel/prices/<int:pk>/", console.price_detail, name="panel-price-detail"),
+    path("panel/prices/<int:pk>/edit/", console.price_editor, name="panel-price-edit"),
+    path("panel/prices/<int:pk>/items/new/", console.price_item_editor, name="panel-price-item-create"),
+    path("panel/prices/<int:pk>/items/<int:item_pk>/", console.price_item_editor, name="panel-price-item-edit"),
+    path("panel/settings/", console.settings_editor, name="panel-settings"),
+    path("panel/integrations/", console.integrations, name="panel-integrations"),
+    path("panel/integrations/new/", console.integration_editor, name="panel-integration-create"),
+    path("panel/integrations/<int:pk>/", console.integration_editor, name="panel-integration-edit"),
+    path("panel/plans/", console.rules, name="panel-rules"),
+    path("panel/plans/<int:pk>/", console.rule_editor, name="panel-rule-edit"),
+    path("panel/templates/", console.templates, name="panel-templates"),
+    path("panel/templates/new/", console.template_editor, name="panel-template-create"),
+    path("panel/templates/<int:pk>/", console.template_detail, name="panel-template-detail"),
+    path("panel/templates/<int:pk>/edit/", console.template_editor, name="panel-template-edit"),
+    path("panel/templates/<int:pk>/pages/new/", console.page_editor, name="panel-page-create"),
+    path("panel/templates/<int:pk>/pages/<int:page_pk>/", console.page_editor, name="panel-page-edit"),
+    path("panel/pages/<int:pk>/elements/new/", console.element_editor, name="panel-element-create"),
+    path("panel/pages/<int:pk>/elements/<int:element_pk>/", console.element_editor, name="panel-element-edit"),
+    path("panel/monitoring/", console.monitoring, name="panel-monitoring"),
+    path("panel/monitoring/check/", console.check_services_now, name="panel-monitor-check"),
     path("admin/", admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
     path("panel/", portal_views.dashboard, name="panel-dashboard"),

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from core.access import is_platform_user, scope_by_company, visible_companies
+from core.access import is_platform_owner, scope_by_company, visible_companies
 from core.models import (
     Company,
     CompanyMembership,
@@ -26,19 +26,19 @@ class PlatformOnlyAdmin(admin.ModelAdmin):
     """Keep platform/company administration out of company-user admin views."""
 
     def has_module_permission(self, request):
-        return is_platform_user(request.user)
+        return is_platform_owner(request.user)
 
     def has_view_permission(self, request, obj=None):
-        return is_platform_user(request.user)
+        return is_platform_owner(request.user)
 
     def has_add_permission(self, request):
-        return is_platform_user(request.user)
+        return is_platform_owner(request.user)
 
     def has_change_permission(self, request, obj=None):
-        return is_platform_user(request.user)
+        return is_platform_owner(request.user)
 
     def has_delete_permission(self, request, obj=None):
-        return is_platform_user(request.user)
+        return is_platform_owner(request.user)
 
 
 class CompanyScopedAdmin(admin.ModelAdmin):
@@ -110,7 +110,7 @@ class DeviceStatusInline(admin.StackedInline):
     extra = 0
     max_num = 1
     can_delete = False
-    readonly_fields = ("status", "last_heartbeat_at", "last_config_version", "firmware_version", "battery_level", "signal_strength", "updated_at")
+    readonly_fields = ("status", "last_heartbeat_at", "last_config_version", "firmware_version", "signal_strength", "updated_at")
 
 
 class FirmwareDeploymentInline(admin.TabularInline):
@@ -135,7 +135,7 @@ class ServiceHealthAdmin(admin.ModelAdmin):
 
 @admin.register(DeviceStatus)
 class DeviceStatusAdmin(admin.ModelAdmin):
-    list_display = ("device", "status", "last_heartbeat_at", "last_config_version", "firmware_version", "battery_level", "signal_strength")
+    list_display = ("device", "status", "last_heartbeat_at", "last_config_version", "firmware_version", "signal_strength")
     search_fields = ("device__external_id", "device__name", "firmware_version")
     list_filter = ("status", "updated_at")
     readonly_fields = ("updated_at",)
