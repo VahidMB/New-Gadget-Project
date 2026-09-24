@@ -10,6 +10,7 @@ x-app: &app
     MQTT_HOST: mqtt
     MQTT_PORT: 1883
     MQTT_USE_TLS: 0
+    GADGET_MANAGED_BROKER: 1
   volumes:
     - runtime:/app/runtime
     - media:/app/media
@@ -61,9 +62,35 @@ services:
     restart: unless-stopped
   mqtt:
     image: eclipse-mosquitto:2
-    volumes: ["./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro"]
+    entrypoint: ["/bin/sh", "/managed-entrypoint.sh"]
+    volumes:
+      - managed_broker:/managed:ro
+      - ./infra/managed/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/managed/mqtt-entrypoint.sh:/managed-entrypoint.sh:ro
+    restart: unless-stopped
+  broker_config:
+    <<: *app
+    command: python manage.py render_broker_credentials --loop
+    volumes:
+      - runtime:/app/runtime
+      - managed_broker:/managed
+    depends_on:
+      api: {condition: service_healthy}
+  gateway:
+    profiles: ["public"]
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./infra/managed/Caddyfile:/etc/caddy/Caddyfile:ro
+      - gateway_data:/data
+      - gateway_config:/config
+    depends_on:
+      api: {condition: service_healthy}
     restart: unless-stopped
 volumes:
   postgres:
   runtime:
   media:
+  managed_broker:
+  gateway_data:
+  gateway_config:

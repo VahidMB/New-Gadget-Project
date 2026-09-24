@@ -6,11 +6,12 @@ import json
 import socket
 import ssl
 from datetime import timedelta
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 import regex
 from bs4 import BeautifulSoup
 from django.core.cache import cache
+from django.db import transaction
 from django.utils import timezone
 from core.models import ExternalDataSource, Integration
 
@@ -39,7 +40,7 @@ def fetch_public(url, headers=None):
     connection = (PinnedHTTPS if parts.scheme == "https" else PinnedHTTP)(parts.hostname, port, timeout=5)
     request_headers = {"User-Agent": "GadgetPlatform/2.0", "Accept": "application/json,text/html,application/rss+xml", "Accept-Encoding": "identity"}
     for key, value in (headers or {}).items():
-        if key.lower() in {"authorization", "x-api-key"}:
+        if regex.fullmatch(r"[A-Za-z0-9_-]{1,64}", key) and key.lower() not in {"host", "connection", "content-length", "transfer-encoding", "cookie", "proxy-authorization"}:
             request_headers[key] = value
     try:
         path = parts.path or "/"
@@ -106,7 +107,11 @@ def cache_key(source):
     return "source:" + signature
 
 
+@transaction.atomic
 def store_value(source, content, observed_at=None):
+    locked = ExternalDataSource.objects.select_for_update().get(pk=source.pk)
+    if locked.updated_at != source.updated_at or not locked.is_active:
+        return False
     now = timezone.now()
     observed_at = observed_at or now
     remaining = int((observed_at + timedelta(seconds=source.ttl_seconds) - now).total_seconds())
@@ -118,6 +123,10 @@ def store_value(source, content, observed_at=None):
     expires = observed_at + timedelta(seconds=source.ttl_seconds)
     cache.set(cache_key(source), {**content, "source_id": source.pk, "source": source.name, "category": source.category, "observed_at": observed_at.isoformat(), "expires_at": expires.isoformat()}, timeout=remaining)
     ExternalDataSource.objects.filter(pk=source.pk).update(last_success_at=now, last_attempt_at=now, last_error="")
+    cache.set("source-revision:" + str(source.pk), now.isoformat(), source.ttl_seconds)
+    if source.selections.filter(device__provisioning_state="provisioned").exists():
+        from core.buzzer import notify_source
+        transaction.on_commit(lambda: notify_source(source.pk))
     return True
 
 
@@ -132,11 +141,12 @@ def read_value(source):
 
 
 def refresh_source(source):
-    if not source.is_active or source.source_type in {"telegram", "internal"}:
+    if not source.is_active or source.update_mode == "push" or source.source_type in {"telegram", "internal"}:
         return False
     ExternalDataSource.objects.filter(pk=source.pk).update(last_attempt_at=timezone.now())
     try:
         headers = {}
+        request_url = source.endpoint_url
         if source.credential_reference:
             credential = Integration.objects.filter(key=source.credential_reference, kind="provider", is_active=True, company_id=source.company_id).first()
             if credential is None:
@@ -145,11 +155,17 @@ def refresh_source(source):
             if not allowed.hostname or (target.scheme, target.hostname, target.port) != (allowed.scheme, allowed.hostname, allowed.port):
                 raise ValueError("اعتبارنامه فقط برای میزبان ثبت‌شده مجاز است.")
             header = credential.options.get("auth_header", "Authorization")
-            if header not in {"Authorization", "X-API-Key"}:
+            if not regex.fullmatch(r"[A-Za-z0-9_-]{1,64}", header) or header.lower() in {"host", "connection", "content-length", "transfer-encoding", "cookie", "proxy-authorization"}:
                 raise ValueError("Unsupported authentication header")
             scheme = credential.options.get("auth_scheme", "Bearer" if header == "Authorization" else "")
-            headers = {header: (str(scheme) + " " if scheme else "") + credential.secret()}
-        raw = fetch_public(source.endpoint_url, headers)
+            if credential.options.get("auth_location") == "query":
+                parameter = credential.options.get("auth_parameter", "api_key")
+                query = [(key, value) for key, value in parse_qsl(target.query, keep_blank_values=True) if key != parameter]
+                query.append((parameter, credential.secret()))
+                request_url = urlunsplit((target.scheme, target.netloc, target.path, urlencode(query), ""))
+            else:
+                headers = {header: (str(scheme) + " " if scheme else "") + credential.secret()}
+        raw = fetch_public(request_url, headers)
         return store_value(source, extract(source, raw))
     except Exception:
         # Never persist exception URLs, provider response bodies or secret headers.

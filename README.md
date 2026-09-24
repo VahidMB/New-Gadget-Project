@@ -2,6 +2,8 @@
  
 Django control panels and backend for market prices, company price lists, and ESP32 information displays.
 
+Latest: [Live sources, buzzer rules, graphical connections and retention](docs/bootstrap/19-live-buzzer-connections.md).
+
 New Persian guide: [Price platform, graphical setup and communication protocols](docs/bootstrap/18-price-platform.md).
 
 Start private graphical setup with `make guided` (or `make test-setup`), then open `/setup/`. Application integrations and encrypted credentials are managed in the owner panel. Firmware source and the interactive Telegram bot are separate projects/stages.

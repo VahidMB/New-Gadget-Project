@@ -52,8 +52,8 @@ def test_expired_prices_and_messages_are_masked_then_erased():
     company, _, _, device = account()
     price_list = PriceList.objects.create(company=company, name="Products")
     price_list.target_devices.add(device)
-    price = PriceItem.objects.create(price_list=price_list, name="Cable", code="A", amount=Decimal("125000"), valid_until=timezone.now()-timedelta(seconds=1))
-    message = MessageCampaign.objects.create(company=company, name="Offer", message="old body", status="sent", expires_at=timezone.now()-timedelta(seconds=1))
+    price = PriceItem.objects.create(price_list=price_list, name="Cable", code="A", disposable=True, amount=Decimal("125000"), valid_until=timezone.now()-timedelta(seconds=1))
+    message = MessageCampaign.objects.create(company=company, name="Offer", message="old body", status="sent", disposable=True, expires_at=timezone.now()-timedelta(seconds=1))
     message.target_devices.add(device)
     payload = device_content(device)
     assert payload["price_lists"][0]["items"][0]["amount"] is None

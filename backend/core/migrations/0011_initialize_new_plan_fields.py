@@ -20,8 +20,7 @@ def initialize(apps, schema_editor):
     # Legacy messages had no expiry. Close that retention hole during upgrade.
     Campaign = apps.get_model("core", "MessageCampaign")
     Campaign.objects.filter(expires_at__isnull=True).update(expires_at=timezone.now()+timedelta(hours=24))
-    Event = apps.get_model("core", "WordPressSyncEvent")
-    Event.objects.exclude(payload={}).update(payload={})
+    # Preserve existing logs. Never erase archived payloads during an upgrade.
 
 
 class Migration(migrations.Migration):

@@ -12,6 +12,16 @@ class PlatformSettings(models.Model):
     heartbeat_timeout = models.PositiveIntegerField(default=300, validators=[MinValueValidator(30)])
     audit_retention_days = models.PositiveIntegerField(default=30, validators=[MinValueValidator(1), MaxValueValidator(365)])
     test_mode = models.BooleanField(default=True)
+    cleanup_enabled = models.BooleanField(default=True)
+    device_mqtt_host = models.CharField(max_length=255, blank=True)
+    device_mqtt_port = models.PositiveIntegerField(default=443, validators=[MinValueValidator(1), MaxValueValidator(65535)])
+    device_mqtt_transport = models.CharField(max_length=16, choices=[("websockets", "WebSocket امن"), ("tcp", "MQTT TCP")], default="websockets")
+    device_mqtt_tls = models.BooleanField(default=True)
+    device_mqtt_path = models.CharField(max_length=128, default="/mqtt")
+    device_heartbeat_seconds = models.PositiveIntegerField(default=60, validators=[MinValueValidator(10), MaxValueValidator(3600)])
+    wordpress_poll_seconds = models.PositiveIntegerField(default=900, validators=[MinValueValidator(30), MaxValueValidator(86400)])
+    wordpress_signature_max_age = models.PositiveIntegerField(default=300, validators=[MinValueValidator(30), MaxValueValidator(900)])
+    managed_tls = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
 
@@ -78,6 +88,7 @@ class PriceItem(models.Model):
     price_list = models.ForeignKey(PriceList, on_delete=models.CASCADE, related_name="items")
     name = models.CharField(max_length=150)
     code = models.CharField(max_length=64)
+    disposable = models.BooleanField(default=False)
     amount = models.DecimalField(max_digits=24, decimal_places=8, null=True, blank=True, validators=[MinValueValidator(0)])
     unit = models.CharField(max_length=32, default="تومان")
     valid_until = models.DateTimeField()
@@ -118,3 +129,54 @@ class ResourceSnapshot(models.Model):
     network_tx_bytes = models.BigIntegerField(null=True)
     sampled_at = models.DateTimeField(auto_now=True)
     origin = models.CharField(max_length=100, default="collector")
+
+
+class BuzzerRule(models.Model):
+    device = models.ForeignKey("core.WordPressDevice", on_delete=models.CASCADE, related_name="buzzer_rules")
+    name = models.CharField(max_length=100)
+    enabled = models.BooleanField(default=True)
+    scope = models.CharField(max_length=16, choices=[("all", "همه اطلاعات"), ("source", "یک منبع"), ("price", "قیمت یک کالا"), ("messages", "پیام‌های شرکت")], default="all")
+    source = models.ForeignKey("core.ExternalDataSource", null=True, blank=True, on_delete=models.SET_NULL)
+    price_item = models.ForeignKey(PriceItem, null=True, blank=True, on_delete=models.SET_NULL)
+    trigger = models.CharField(max_length=16, choices=[("new", "اطلاعات جدید یا تغییر مقدار"), ("percent", "نوسان درصدی"), ("absolute", "نوسان به مقدار مشخص"), ("above", "عبور از سقف"), ("below", "عبور از کف")], default="new")
+    direction = models.CharField(max_length=8, choices=[("both", "افزایش و کاهش"), ("up", "فقط افزایش"), ("down", "فقط کاهش")], default="both")
+    threshold = models.DecimalField(max_digits=24, decimal_places=8, null=True, blank=True, validators=[MinValueValidator(0)])
+    window_seconds = models.PositiveIntegerField(default=0)
+    notify_first = models.BooleanField(default=False)
+    duration_ms = models.PositiveIntegerField(default=300, validators=[MinValueValidator(50), MaxValueValidator(3000)])
+    repeat = models.PositiveIntegerField(default=2, validators=[MinValueValidator(1), MaxValueValidator(5)])
+    gap_ms = models.PositiveIntegerField(default=200, validators=[MinValueValidator(50), MaxValueValidator(3000)])
+    cooldown_seconds = models.PositiveIntegerField(default=60, validators=[MinValueValidator(5), MaxValueValidator(86400)])
+    max_per_hour = models.PositiveIntegerField(default=20, validators=[MinValueValidator(1), MaxValueValidator(120)])
+    quiet_start = models.TimeField(null=True, blank=True)
+    quiet_end = models.TimeField(null=True, blank=True)
+    weekdays = models.JSONField(default=list, blank=True)
+    last_triggered_at = models.DateTimeField(null=True, blank=True, editable=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
+class BuzzerEvent(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device = models.ForeignKey("core.WordPressDevice", on_delete=models.PROTECT, related_name="buzzer_events")
+    rule = models.ForeignKey(BuzzerRule, null=True, on_delete=models.SET_NULL)
+    reason = models.CharField(max_length=100)
+    item_key = models.CharField(max_length=150)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    published_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+
+
+    class Meta:
+        indexes = [models.Index(fields=["device", "expires_at"], name="buzzer_device_expiry"), models.Index(fields=["rule", "created_at"], name="buzzer_rule_time")]
+
+
+class DeviceBrokerCredential(models.Model):
+    device = models.OneToOneField("core.WordPressDevice", on_delete=models.CASCADE, related_name="broker_credential")
+    encrypted_password = models.TextField()
+    updated_at = models.DateTimeField(auto_now=True)

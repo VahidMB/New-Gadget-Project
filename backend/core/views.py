@@ -13,7 +13,7 @@ from core.access import is_platform_user
 from core.firmware import select_firmware_release
 from core.device_auth import check_device_token
 from core.metrics import render_metrics
-from core.runtime import runtime_setting
+from core.runtime import runtime_setting, platform_settings
 from core.models import DeviceStatus, FirmwareDeployment, FirmwareRelease, ServiceHealth, SyncNotification, WordPressDevice
 from core.services import (
     get_device_display_config,
@@ -75,7 +75,7 @@ def wordpress_webhook(request):
         return Response({"detail": "Missing signature headers"}, status=status.HTTP_400_BAD_REQUEST)
     if not is_wordpress_timestamp_fresh(
         timestamp=timestamp,
-        max_age_seconds=settings.WORDPRESS_WEBHOOK_MAX_AGE_SECONDS,
+        max_age_seconds=platform_settings().wordpress_signature_max_age,
     ):
         return Response({"detail": "Expired or invalid webhook timestamp"}, status=status.HTTP_401_UNAUTHORIZED)
 

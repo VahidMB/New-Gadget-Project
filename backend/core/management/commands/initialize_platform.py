@@ -25,6 +25,10 @@ class Command(BaseCommand):
             obj, created = Integration.objects.get_or_create(key=key, defaults={"name": name, "kind": kind, "endpoint": endpoint, "username": username})
             if not created:
                 continue
+            if key == "mqtt" and os.getenv("GADGET_MANAGED_BROKER") == "1":
+                import secrets
+                obj.username = "gadget-backend"
+                secret = secrets.token_urlsafe(32)
             obj.set_secret(secret)
             if key == "mqtt":
                 obj.port, obj.use_tls = settings.MQTT_PORT, settings.MQTT_USE_TLS

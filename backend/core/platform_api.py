@@ -15,7 +15,10 @@ def content(request, external_id):
     device, error = _authenticated_device(request, external_id)
     if error is not None:
         return error
-    response = Response(device_content(device))
+    data = device_content(device)
+    from core.buzzer import pending_events
+    data["buzzer_events"] = pending_events(device)
+    response = Response(data)
     response["Cache-Control"] = "no-store"
     return response
 
@@ -104,3 +107,73 @@ def resource_report(request):
         ResourceSnapshot.objects.update_or_create(service=sample["service"], defaults={**fields, "origin": "authenticated collector"})
         ServiceHealth.objects.update_or_create(service_name=sample["service"], defaults={"status": sample.get("status", "up")})
     return Response({"accepted": len(parsed)})
+
+
+@api_view(["POST"])
+def source_push(request, source_id):
+    """Authenticated per-source JSON ingress; the observed time must be signed with the body."""
+    import hashlib
+    import hmac
+    import json
+    from core.secrets import decrypt
+    source = ExternalDataSource.objects.filter(pk=source_id, update_mode="push", source_type="http", is_active=True).first()
+    if not source or not source.encrypted_push_secret:
+        return Response({"detail": "Unauthorized"}, status=401)
+    stamp = request.headers.get("X-Source-Timestamp", "")
+    event_id = request.headers.get("X-Source-Event", "")
+    raw = request.body
+    if len(raw) > 65536 or not event_id or len(event_id) > 100:
+        return Response({"detail": "Invalid event"}, status=400)
+    try:
+        observed = datetime.fromtimestamp(int(stamp), tz=dt_timezone.utc)
+    except (ValueError, OverflowError, OSError):
+        return Response({"detail": "Invalid timestamp"}, status=400)
+    age = (timezone.now()-observed).total_seconds()
+    if age < -5 or age > min(source.ttl_seconds, 300):
+        return Response({"detail": "Expired timestamp"}, status=400)
+    signature = hmac.new(decrypt(source.encrypted_push_secret).encode(), (stamp+"."+event_id+".").encode()+raw, hashlib.sha256).hexdigest()
+    if not secrets.compare_digest(signature, request.headers.get("X-Source-Signature", "")):
+        return Response({"detail": "Unauthorized"}, status=401)
+    try:
+        json.loads(raw)
+        content = extract(source, raw.decode("utf-8"))
+    except (ValueError, TypeError, KeyError, IndexError, UnicodeDecodeError, TimeoutError):
+        return Response({"detail": "Payload does not match source mapping"}, status=400)
+    replay = "source-event:" + hashlib.sha256(f"{source.pk}:{event_id}".encode()).hexdigest()
+    if not cache.add(replay, True, max(source.ttl_seconds, 300)):
+        return Response({"accepted": True, "duplicate": True})
+    accepted = store_value(source, content, min(observed, timezone.now()))
+    return Response({"accepted": accepted})
+
+
+@api_view(["POST"])
+def buzzer_ack(request, external_id, event_id):
+    from core.models import BuzzerEvent
+    device, error = _authenticated_device(request, external_id)
+    if error is not None:
+        return error
+    count = BuzzerEvent.objects.filter(pk=event_id, device=device).update(acknowledged_at=timezone.now())
+    return Response({"acknowledged": bool(count)}, status=200 if count else 404)
+
+
+@api_view(["GET"])
+def device_connections(request, external_id):
+    from core.connections import device_connection_config, broker_credential
+    device, error = _authenticated_device(request, external_id)
+    if error is not None:
+        return error
+    data = device_connection_config(device)
+    data["mqtt"]["password"] = broker_credential(device)
+    response = Response(data)
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def tls_permission(request):
+    from django.http import HttpResponse
+    from urllib.parse import urlsplit
+    from core.runtime import platform_settings
+    config = platform_settings()
+    configured = urlsplit(config.public_base_url).hostname
+    allowed = config.setup_complete and config.managed_tls and configured and request.GET.get("domain", "").lower() == configured.lower()
+    return HttpResponse(status=204 if allowed else 403)

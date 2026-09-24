@@ -60,3 +60,22 @@ def source_definition_changed(sender, instance, raw=False, **kwargs):
     if not raw:
         for device_id in instance.selections.values_list("device_id", flat=True):
             refresh_device_config(device_id)
+
+
+from core.models import BuzzerRule, PlatformSettings, Integration  # noqa: E402
+
+@receiver(post_save, sender=BuzzerRule)
+@receiver(post_delete, sender=BuzzerRule)
+def buzzer_rule_changed(sender, instance, raw=False, update_fields=None, **kwargs):
+    if not raw and update_fields != frozenset({"last_triggered_at"}):
+        from core.models import BuzzerEvent
+        from django.utils import timezone
+        BuzzerEvent.objects.filter(rule_id=instance.pk, acknowledged_at__isnull=True, expires_at__gt=timezone.now()).update(expires_at=timezone.now())
+        refresh_device_config(instance.device_id)
+
+
+@receiver(post_save, sender=PlatformSettings)
+@receiver(post_save, sender=Integration)
+def connection_settings_changed(sender, raw=False, **kwargs):
+    if not raw:
+        refresh_all_device_configs()

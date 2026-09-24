@@ -35,3 +35,10 @@ urlpatterns += [
     path("devices/<str:external_id>/firmware/<int:release_id>/download/", platform_api.firmware_download, name="firmware-download"),
     path("monitoring/resources/", platform_api.resource_report, name="resource-report"),
 ]
+
+urlpatterns += [
+    path("sources/<int:source_id>/push/", platform_api.source_push, name="source-push"),
+    path("devices/<str:external_id>/connections/", platform_api.device_connections, name="device-connections"),
+    path("devices/<str:external_id>/buzzer/<uuid:event_id>/ack/", platform_api.buzzer_ack, name="buzzer-ack"),
+    path("internal/tls-permission/", platform_api.tls_permission, name="tls-permission"),
+]

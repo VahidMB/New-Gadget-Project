@@ -24,6 +24,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "core.middleware.TransportSecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -114,6 +115,7 @@ CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 HEALTH_CHECK_STALE_AFTER_SECONDS = int(os.getenv("HEALTH_CHECK_STALE_AFTER_SECONDS", "180"))
 DEVICE_HEARTBEAT_STALE_AFTER_SECONDS = int(os.getenv("DEVICE_HEARTBEAT_STALE_AFTER_SECONDS", "300"))
 CELERY_BEAT_SCHEDULE = {
+    "buzzer-rules": {"task": "core.platform_tasks.process_buzzer_rules", "schedule": 2.0},
     "publish-content-hints": {"task": "core.platform_tasks.publish_content_hints", "schedule": 5.0},
     "refresh-source-values": {"task": "core.platform_tasks.refresh_sources", "schedule": 5.0},
     "expire-content": {"task": "core.platform_tasks.expire_content", "schedule": 30.0},
@@ -131,7 +133,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "wordpress-pull-sync": {
         "task": "core.tasks.wordpress_pull_sync",
-        "schedule": 900.0,
+        "schedule": 30.0,
     },
     "dispatch-message-campaigns": {
         "task": "core.tasks.dispatch_due_message_campaigns",
@@ -153,4 +155,4 @@ if os.getenv("GADGET_LOCAL_HTTP") == "1":
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
 
-SECURE_REDIRECT_EXEMPT = [r"^api/v1/ping/$"]
+SECURE_REDIRECT_EXEMPT = [r"^api/v1/ping/$", r"^api/v1/internal/tls-permission/$"]

@@ -55,6 +55,10 @@ def refresh_device_config(device_id, *, created=False):
                 effective.setdefault("theme", {})["primary_color"] = preference.custom_primary
             effective["rotation_seconds"] = preference.rotation_seconds
             effective["live_updates"] = preference.live_updates
+        from core.buzzer import rules_config
+        from core.connections import device_connection_config
+        effective["buzzer"] = rules_config(device)
+        effective["connections"] = device_connection_config(device)
         effective["data_refresh_seconds"] = max(5, rule.min_refresh_seconds)
         effective["selected_sources"] = [source["key"] for source in device_content(device)["sources"]]
         effective["rules"] = {"max_sources": rule.max_sources, "max_telegram_sources": rule.max_telegram_sources, "max_pages": rule.max_pages, "max_elements_per_page": rule.max_elements_per_page, "can_customize_ui": rule.can_customize_ui}

@@ -6,6 +6,13 @@ from core import console_views as console
 from django.shortcuts import redirect
 
 urlpatterns = [
+    path("panel/devices/<int:pk>/buzzer/history/", console.buzzer_history, name="panel-buzzer-history"),
+    path("panel/live/stream/", console.live_stream, name="panel-live-stream"),
+    path("panel/connections/", console.connection_settings, name="panel-connections"),
+    path("panel/devices/<int:pk>/buzzer/", console.buzzer_rules, name="panel-buzzer-list"),
+    path("panel/devices/<int:pk>/buzzer/new/", console.buzzer_editor, name="panel-buzzer-create"),
+    path("panel/devices/<int:pk>/buzzer/<int:rule_pk>/", console.buzzer_editor, name="panel-buzzer-edit"),
+    path("panel/devices/<int:pk>/broker/rotate/", console.broker_rotate, name="panel-broker-rotate"),
     path("", lambda request: redirect("panel-dashboard")),
     path("setup/", console.setup, name="setup"),
     path("panel/devices/bulk/", console.device_bulk, name="panel-device-bulk"),

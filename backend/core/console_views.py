@@ -425,7 +425,7 @@ def price_detail(request, pk):
     price_list = get_object_or_404(qs, pk=pk)
     purge_expired_content()
     editable = is_platform_user(request.user) or (price_list.company_id in managed_company_ids(request.user) and account_rule(price_list.company).can_send_messages)
-    return render(request, "core/portal/prices.html", {"price_list": price_list, "editable": editable})
+    return render(request, "core/portal/prices.html", {"price_list": price_list, "editable": editable, "now": timezone.now()})
 
 
 @login_required
@@ -657,3 +657,101 @@ def membership_editor(request, pk):
             audit(request, "membership.save", obj)
             return redirect("panel-membership-list")
     return form_page(request, form, "ویرایش نقش و عضویت", "panel-membership-list")
+
+
+@login_required
+def buzzer_rules(request, pk):
+    from core.models import BuzzerRule
+    device = get_object_or_404(visible_devices(request.user), pk=pk)
+    rows = [{"cells": [r.name, r.get_scope_display(), r.get_trigger_display(), r.threshold or "—", f"{r.repeat} × {r.duration_ms} ms", "فعال" if r.enabled else "غیرفعال"], "url": reverse("panel-buzzer-edit", args=[pk, r.pk])} for r in BuzzerRule.objects.filter(device=device)]
+    return list_page(request, f"بازر {device.name or device.external_id}", ["قانون", "اطلاعات", "شرط", "آستانه", "الگوی بوق", "وضعیت"], rows, reverse("panel-buzzer-create", args=[pk]), "قوانین مستقل هستند؛ ساعات سکوت طبق منطقه زمانی سامانه اعمال می‌شود. اجرای بوق نیازمند پشتیبانی Firmware از قرارداد بازر است.")
+
+
+@login_required
+def buzzer_editor(request, pk, rule_pk=None):
+    from core.models import BuzzerRule
+    from core.platform_forms import BuzzerRuleForm
+    device = get_object_or_404(visible_devices(request.user), pk=pk)
+    rule = get_object_or_404(BuzzerRule, pk=rule_pk, device=device) if rule_pk else BuzzerRule(device=device)
+    form = BuzzerRuleForm(request.POST or None, instance=rule)
+    allowed = [s["id"] for s in device_content(device)["sources"]]
+    form.fields["source"].queryset = ExternalDataSource.objects.filter(pk__in=allowed)
+    from core.access import ancestor_company_ids
+    form.fields["price_item"].queryset = PriceItem.objects.filter(price_list__target_devices=device, price_list__company_id__in=ancestor_company_ids(device.company_id))
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            WordPressDevice.objects.select_for_update().get(pk=pk)
+            if not rule.pk and device.buzzer_rules.count() >= 20:
+                form.add_error(None, "حداکثر ۲۰ قانون برای هر دستگاه مجاز است.")
+            else:
+                obj = form.save()
+                audit(request, "buzzer.rule.save", obj)
+                return redirect("panel-buzzer-list", pk=pk)
+    return form_page(request, form, "تنظیم قانون بازر", note="آستانه درصدی مثل ۵ یعنی پنج درصد. برای نوسان مبلغی، واحد همان منبع یا کالاست. اولین دریافت به طور پیش‌فرض بوق ندارد.")
+
+
+@owner_only
+def connection_settings(request):
+    from core.platform_forms import ConnectionSettingsForm
+    form = ConnectionSettingsForm(request.POST or None, instance=platform_settings())
+    if request.method == "POST" and form.is_valid():
+        obj = form.save()
+        audit(request, "connections.save", obj)
+        messages.success(request, "تنظیمات ارتباط ذخیره شد و نسخه تنظیمات گجت‌ها به‌روز شد.")
+        return redirect("panel-connections")
+    return form_page(request, form, "ارتباط وردپرس، سرور و گجت‌ها", note="توکن‌ها در بخش اتصال‌ها و توکن‌ها تنظیم می‌شوند. در استقرار مدیریت‌شده، DNS دامنه را به سرور وصل کنید؛ صدور HTTPS خودکار است. اطلاعات اتصال دستگاه در API احرازشده connections قرار می‌گیرد.")
+
+
+@owner_only
+@require_POST
+def broker_rotate(request, pk):
+    from core.connections import broker_credential
+    device = get_object_or_404(WordPressDevice, pk=pk)
+    broker_credential(device, rotate=True)
+    audit(request, "broker.credentials.rotate", device)
+    messages.success(request, "گذرواژه اختصاصی MQTT تعویض شد. گجت باید اطلاعات اتصال را دوباره با توکن HTTPS خود دریافت کند.")
+    return redirect("panel-device-detail", pk=pk)
+
+
+@login_required
+def live_stream(request):
+    import hashlib
+    import json
+    import time
+    from django.core.serializers.json import DjangoJSONEncoder
+    from django.http import StreamingHttpResponse
+    device_id = request.GET.get("device", "")
+    if not device_id.isdigit():
+        return HttpResponse(status=400)
+    get_object_or_404(visible_devices(request.user), pk=device_id)
+    def stream():
+        previous = None
+        deadline = time.monotonic()+20
+        yield "retry: 2000\n\n"
+        while time.monotonic() < deadline:
+            request.user.refresh_from_db(fields=["is_active"])
+            device = visible_devices(request.user).filter(pk=device_id).first()
+            if device is None:
+                yield 'event: revoked\ndata: {}\n\n'
+                return
+            data = device_content(device)
+            data.pop("server_time", None)
+            digest = hashlib.sha256(json.dumps(data, cls=DjangoJSONEncoder, sort_keys=True).encode()).hexdigest()
+            if digest != previous:
+                previous = digest
+                yield 'data: '+json.dumps({"revision": digest})+'\n\n'
+            else:
+                yield ': heartbeat\n\n'
+            time.sleep(1)
+    response = StreamingHttpResponse(stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-store"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
+@login_required
+def buzzer_history(request, pk):
+    device = get_object_or_404(visible_devices(request.user), pk=pk)
+    page = Paginator(device.buzzer_events.order_by("-created_at"), 30).get_page(request.GET.get("page"))
+    page.object_list = [{"cells": [event.created_at, event.reason, event.item_key, "تأیید دستگاه" if event.acknowledged_at else ("انتشار در MQTT" if event.published_at else "بدون تأیید انتشار"), event.expires_at]} for event in page.object_list]
+    return render(request, "core/portal/listing.html", {"heading": "سوابق هشدار بازر", "columns": ["زمان", "قانون", "اطلاعات", "وضعیت تحویل", "مهلت اجرای بوق"], "rows": page, "note": "این سوابق با پایان مهلت اجرای بوق پاک نمی‌شوند. انتشار در MQTT به معنی تأیید اجرای بوق نیست."})

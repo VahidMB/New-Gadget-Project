@@ -55,15 +55,28 @@
   }
   setInterval(expire, 1000);
   expire();
-  if (!live || live.dataset.liveEnabled === 'false') return;
+  if (!live) return;
+  const shape = (sources, lists, items, messages) => JSON.stringify([sources.sort(), lists.sort(), items.sort(), messages.sort()]);
+  const initialShape = shape([...live.querySelectorAll('[data-source-value]')].map(x => x.dataset.sourceValue), [...live.querySelectorAll('[data-price-list-id]')].map(x => x.dataset.priceListId), [...live.querySelectorAll('[data-price-code]')].map(x => JSON.stringify([x.dataset.listId,x.dataset.priceCode])), [...live.querySelectorAll('[data-message-id]')].map(x=>x.dataset.messageId));
   let interval = 30000;
-  async function poll() {
+  let polling = false;
+  if (live.dataset.liveEnabled !== 'false' && window.EventSource) {
+    const stream = new EventSource('/panel/live/stream/' + new URL(live.dataset.liveUrl, location.origin).search);
+    stream.onmessage = () => poll(false);
+    stream.addEventListener('revoked', () => { stream.close(); location.reload(); });
+    window.addEventListener('pagehide', () => stream.close());
+  }
+  async function poll(schedule = true) {
+    if (polling) { if (schedule) setTimeout(poll, interval); return; }
+    polling = true;
     let enabled = true;
     try {
       const response = await fetch(live.dataset.liveUrl, { credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw Error('Unavailable');
       const data = await response.json();
-      enabled = data.live_updates;
+      const nextShape = shape(data.sources.map(x=>String(x.id)), data.price_lists.map(x=>String(x.id)), data.price_lists.flatMap(list=>list.items.map(item=>JSON.stringify([String(list.id),item.code]))), data.messages.map(x=>String(x.id)));
+      if (nextShape !== initialShape) { enabled = false; location.reload(); return; }
+      enabled = true;
       interval = Math.max(5000, data.poll_after_seconds * 1000);
       for (const source of data.sources) {
         const value = document.querySelector(`[data-source-value="${source.id}"]`);
@@ -93,7 +106,8 @@
       // Values always expire locally even when the server cannot be reached.
     } finally {
       expire();
-      if (enabled) setTimeout(poll, interval);
+      polling = false;
+      if (enabled && schedule) setTimeout(poll, interval);
     }
   }
   setTimeout(poll, interval);

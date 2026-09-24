@@ -72,11 +72,15 @@ class ExternalDataSource(models.Model):
     category = models.CharField(max_length=16, choices=[("price", "قیمت"), ("news", "اخبار"), ("weather", "آب‌وهوا"), ("text", "متن")], default="price")
     unit = models.CharField(max_length=40, blank=True)
     ttl_seconds = models.PositiveIntegerField(default=300)
+    update_mode = models.CharField(max_length=16, choices=[("periodic", "دریافت دوره‌ای"), ("push", "لحظه‌ای؛ دریافت Webhook")], default="periodic")
+    encrypted_push_secret = models.TextField(blank=True, editable=False)
+    disposable = models.BooleanField(default=True)
     extraction_pattern = models.CharField(max_length=500, blank=True)
     telegram_chat_id = models.CharField(max_length=100, blank=True)
     last_attempt_at = models.DateTimeField(null=True, blank=True)
     last_success_at = models.DateTimeField(null=True, blank=True)
     last_error = models.CharField(max_length=255, blank=True)
+    disposable = models.BooleanField(default=False)
     name = models.CharField(max_length=255)
     source_type = models.CharField(max_length=64, choices=SourceType.choices, default=SourceType.HTTP_API)
     display_key = models.CharField(max_length=128)
@@ -114,6 +118,7 @@ class MessageCampaign(models.Model):
     expires_at = models.DateTimeField(null=True, blank=True)
     price_list = models.ForeignKey("PriceList", null=True, blank=True, on_delete=models.SET_NULL, related_name="campaigns")
     last_error = models.CharField(max_length=255, blank=True)
+    disposable = models.BooleanField(default=False)
     name = models.CharField(max_length=255)
     message = models.TextField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
@@ -460,4 +465,4 @@ class DeviceStatus(models.Model):
     def __str__(self) -> str:
         return f"{self.device.external_id} - {self.status}"
 
-from core.platform_models import (Integration, PlatformSettings, DevicePreference, SourceSelection, PriceList, PriceItem, CampaignDelivery, AuditEvent, ResourceSnapshot)  # noqa: E402,F401
+from core.platform_models import (Integration, PlatformSettings, DevicePreference, SourceSelection, PriceList, PriceItem, CampaignDelivery, AuditEvent, ResourceSnapshot, BuzzerRule, BuzzerEvent, DeviceBrokerCredential)  # noqa: E402,F401

@@ -1,9 +1,8 @@
-from datetime import timedelta
 from celery import shared_task
 from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
-from core.models import (ExternalDataSource, MessageCampaign, CampaignDelivery, AuditEvent, WordPressSyncEvent, SyncNotification)
+from core.models import (ExternalDataSource, MessageCampaign, CampaignDelivery)
 from core.access import account_rule, rule_for, company_tree_ids
 from core.runtime import platform_settings
 from core.source_engine import refresh_source
@@ -15,7 +14,7 @@ from core.mqtt import publish_device_message
 def refresh_sources():
     refreshed = 0
     now = timezone.now()
-    for source in ExternalDataSource.objects.filter(is_active=True).exclude(source_type__in=["telegram", "internal"]).select_related("company").iterator():
+    for source in ExternalDataSource.objects.filter(is_active=True, update_mode="periodic").exclude(source_type__in=["telegram", "internal"]).select_related("company").iterator():
         interval = source.refresh_interval_seconds
         if source.company:
             rule = account_rule(source.company)
@@ -37,11 +36,12 @@ def refresh_sources():
 
 @shared_task
 def expire_content():
-    count = purge_expired_content()
-    cutoff = timezone.now() - timedelta(days=platform_settings().audit_retention_days)
-    for model in [AuditEvent, WordPressSyncEvent, SyncNotification]:
-        model.objects.filter(created_at__lt=cutoff).delete()
-    return count
+    # Audit, sync, alert and delivery logs are permanent. Only opted-in transient values expire.
+    if not platform_settings().cleanup_enabled:
+        return 0
+    from django.contrib.sessions.models import Session
+    expired_sessions, _ = Session.objects.filter(expire_date__lte=timezone.now()).delete()
+    return purge_expired_content() + expired_sessions
 
 
 @shared_task
@@ -113,3 +113,30 @@ def publish_content_hints():
         cache.set(key, revision, 86400)
         published += 1
     return published
+
+
+@shared_task
+def process_buzzer_rules():
+    from core.models import WordPressDevice
+    from core.buzzer import evaluate_device
+    for device in WordPressDevice.objects.filter(buzzer_rules__enabled=True, is_active=True, customer_enabled=True, provisioning_state="provisioned").distinct().select_related("company", "assigned_user"):
+        evaluate_device(device)
+    return publish_buzzer_events()
+
+
+@shared_task
+def publish_buzzer_events():
+    from core.models import BuzzerEvent
+    count = 0
+    for event in BuzzerEvent.objects.filter(expires_at__gt=timezone.now(), published_at__isnull=True, acknowledged_at__isnull=True, rule__enabled=True).select_related("device", "device__company", "device__assigned_user"):
+        device = event.device
+        if not device.is_active or not device.customer_enabled or device.provisioning_state != "provisioned" or (device.company and not device.company.is_active) or (device.assigned_user and not device.assigned_user.is_active):
+            continue
+        try:
+            publish_device_message(external_id=device.external_id, suffix="events/buzzer", retain=False, payload={"type": "buzzer.alert", "event_id": str(event.pk), "rule_id": event.rule_id, "expires_at": event.expires_at.isoformat(), **event.payload})
+        except Exception:
+            continue
+        event.published_at = timezone.now()
+        event.save(update_fields=["published_at"])
+        count += 1
+    return count

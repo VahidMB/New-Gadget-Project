@@ -39,8 +39,11 @@ def device_content(device):
 
 
 def purge_expired_content():
+    from core.runtime import platform_settings
+    if not platform_settings().cleanup_enabled:
+        return 0
     now = timezone.now()
     # Keep product identities, discard expired price values and message bodies.
-    prices = PriceItem.objects.filter(valid_until__lte=now, amount__isnull=False).update(amount=None)
-    messages = MessageCampaign.objects.filter(expires_at__lte=now).exclude(message="").update(message="")
+    prices = PriceItem.objects.filter(valid_until__lte=now, amount__isnull=False, disposable=True).update(amount=None)
+    messages = MessageCampaign.objects.filter(expires_at__lte=now, disposable=True).exclude(message="").update(message="")
     return prices + messages

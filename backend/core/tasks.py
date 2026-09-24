@@ -29,6 +29,12 @@ def mark_stale_devices() -> int:
 @shared_task(autoretry_for=(OSError, ValueError), retry_backoff=True, retry_kwargs={"max_retries": 3})
 def wordpress_pull_sync() -> dict:
     """Synchronize the WordPress mirror on a schedule, with bounded retries."""
+    from core.runtime import runtime_setting, platform_settings
+    from django.core.cache import cache
+    if not runtime_setting("WORDPRESS_API_BASE_URL"):
+        return {"skipped": True}
+    if not cache.add("wordpress-poll-due", True, platform_settings().wordpress_poll_seconds):
+        return {"skipped": True}
     return run_wordpress_pull_sync()
 
 
@@ -70,3 +76,15 @@ def retry_pending_config_notifications() -> int:
     return count
 
 from core import platform_tasks  # noqa: E402,F401
+
+
+@shared_task
+def process_live_source(source_id):
+    from core.models import SourceSelection
+    from core.buzzer import evaluate_device
+    from core.platform_tasks import publish_buzzer_events, publish_content_hints
+    ids = SourceSelection.objects.filter(source_id=source_id, enabled=True).values_list("device_id", flat=True)
+    for device in WordPressDevice.objects.filter(pk__in=ids).select_related("company", "assigned_user"):
+        evaluate_device(device)
+    publish_buzzer_events()
+    publish_content_hints()
