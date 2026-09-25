@@ -180,3 +180,9 @@ class DeviceBrokerCredential(models.Model):
     device = models.OneToOneField("core.WordPressDevice", on_delete=models.CASCADE, related_name="broker_credential")
     encrypted_password = models.TextField()
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class StaffAccess(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='staff_access')
+    permissions = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)

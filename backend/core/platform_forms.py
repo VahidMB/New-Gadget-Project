@@ -376,3 +376,12 @@ class BuzzerRuleForm(PersianModelForm):
         if bool(data.get("quiet_start")) != bool(data.get("quiet_end")) or (data.get("quiet_start") and data.get("quiet_start") == data.get("quiet_end")):
             self.add_error("quiet_end", "ابتدا و انتهای بازه سکوت باید مشخص و متفاوت باشند.")
         return data
+
+
+class StaffAccessForm(forms.Form):
+    from core.staff_access import CHOICES
+    permissions = forms.MultipleChoiceField(
+        choices=CHOICES, required=False, widget=forms.CheckboxSelectMultiple(attrs={"class": "staff-choices"}),
+        label='دسترسی‌های این کارمند',
+        help_text='فقط گزینه‌های انتخاب‌شده مجازند. مدیریت هر بخش، مشاهده همان بخش را هم مجاز می‌کند. این مجوزها در سطح کل سامانه هستند؛ نقش مشتری یا مدیر شرکت را به کارمند تبدیل نمی‌کنند.',
+    )

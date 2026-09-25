@@ -18,6 +18,7 @@ from django.views.decorators.http import require_POST
 from core.access import (is_platform_user, is_platform_owner, visible_companies, visible_devices, visible_sources, managed_company_ids, rule_for, account_rule, source_allowed, company_tree_ids)
 from core.models import (Company, WordPressDevice, ExternalDataSource, SourceSelection, DevicePreference, PriceList, PriceItem, MessageCampaign, Integration, PlatformSettings, PlanRule, UITemplate, UIPage, UIElement, ServiceHealth, ResourceSnapshot, AuditEvent)
 from core.platform_forms import (CompanyEditForm, DeviceEditForm, SourceForm, PreferenceForm, IntegrationForm, SettingsForm, RuleForm, TemplateForm, PageForm, ElementForm, PriceListForm, PriceItemForm, CampaignForm, UserEditForm, SetupForm)
+from core.staff_access import route_allowed, delegated_route_allowed
 from core.runtime import platform_settings
 from core.source_engine import read_value, refresh_source
 from core.content import device_content, purge_expired_content
@@ -27,7 +28,7 @@ def owner_only(view):
     @wraps(view)
     @login_required
     def wrapped(request, *args, **kwargs):
-        if not is_platform_owner(request.user):
+        if not is_platform_owner(request.user) and not delegated_route_allowed(request):
             raise PermissionDenied
         return view(request, *args, **kwargs)
     return wrapped
@@ -42,8 +43,15 @@ def form_page(request, form, title, back="panel-dashboard", **context):
 
 
 def list_page(request, title, columns, rows, create=None, note=""):
+    if is_platform_user(request.user) and not is_platform_owner(request.user):
+        from django.urls import resolve
+        if create and not route_allowed(request.user, resolve(create).url_name):
+            create = None
+        for row in rows:
+            if row.get("url") and not route_allowed(request.user, resolve(row["url"]).url_name):
+                row["url"] = None
     page = Paginator(rows, 30).get_page(request.GET.get("page"))
-    return render(request, "core/portal/listing.html", {"heading": title, "columns": columns, "rows": page, "create_url": create, "note": note, "bulk_devices": request.resolver_match.url_name == "panel-device-list"})
+    return render(request, "core/portal/listing.html", {"heading": title, "columns": columns, "rows": page, "create_url": create, "note": note, "bulk_devices": request.resolver_match.url_name == "panel-device-list" and route_allowed(request.user, "panel-device-bulk")})
 
 
 def manage_company(request, company):
@@ -72,6 +80,8 @@ def device_state(device):
 
 @login_required
 def dashboard(request):
+    if is_platform_user(request.user) and not is_platform_owner(request.user):
+        return render(request, "core/portal/staff_dashboard.html")
     devices = visible_devices(request.user).select_related("company", "assigned_user", "status")
     selected = devices.filter(pk=request.GET.get("device")).first() if request.GET.get("device", "").isdigit() else devices.first()
     for device in devices:
@@ -113,14 +123,14 @@ def device_list(request):
     for device in devices:
         label, style = device_state(device)
         rows.append({"pk": device.pk, "cells": [device.name or device.external_id, str(device.company or "—"), device.recipient_name or (str(device.assigned_user) if device.assigned_user else "آماده تخصیص"), device.group_name or "—", "VIP" if device.normalized_plan == "pro" else "ساده", label], "url": reverse("panel-device-detail", args=[device.pk]), "badge": style})
-    return list_page(request, "گجت‌ها و نمایندگان", ["گجت", "حساب مالک", "استفاده‌کننده", "گروه", "پلن", "وضعیت"], rows, reverse("panel-device-create") if is_platform_owner(request.user) else None)
+    return list_page(request, "گجت‌ها و نمایندگان", ["گجت", "حساب مالک", "استفاده‌کننده", "گروه", "پلن", "وضعیت"], rows, reverse("panel-device-create") if is_platform_user(request.user) and route_allowed(request.user, "panel-device-create") else None)
 
 
 @login_required
 def device_detail(request, pk):
     device = get_object_or_404(visible_devices(request.user).select_related("company", "assigned_user", "status"), pk=pk)
     label, style = device_state(device)
-    return render(request, "core/portal/device_overview.html", {"device": device, "connection_label": label, "connection_style": style, "content": device_content(device), "can_control": is_platform_owner(request.user) or (device.normalized_plan == "pro" and device.company_id in managed_company_ids(request.user))})
+    return render(request, "core/portal/device_overview.html", {"device": device, "connection_label": label, "connection_style": style, "content": device_content(device), "can_control": (is_platform_user(request.user) and route_allowed(request.user, "panel-device-activation-toggle")) or (not is_platform_user(request.user) and device.normalized_plan == "pro" and device.company_id in managed_company_ids(request.user))})
 
 
 @owner_only
@@ -160,7 +170,7 @@ def device_edit(request, pk):
 @require_POST
 def device_activation_toggle(request, pk):
     device = get_object_or_404(visible_devices(request.user), pk=pk)
-    if is_platform_owner(request.user):
+    if is_platform_user(request.user):
         device.is_active = not device.is_active
         device.provisioning_state = "suspended" if not device.is_active else ("provisioned" if device.device_token_hash else "unprovisioned")
     else:
@@ -326,6 +336,8 @@ def user_list(request):
 @owner_only
 def user_editor(request, pk=None):
     user = get_object_or_404(get_user_model(), pk=pk) if pk else None
+    if user and not is_platform_owner(request.user) and (user.is_superuser or user.is_staff or user.company_memberships.filter(role__in=["owner", "employee"]).exists()):
+        raise PermissionDenied("ویرایش حساب‌های مدیریتی فقط برای مالک سامانه مجاز است.")
     form = UserEditForm(request.POST or None, instance=user)
     if not pk:
         form.fields["password"].required = True
@@ -337,7 +349,7 @@ def user_editor(request, pk=None):
             audit(request, "user.save", user)
             messages.success(request, "کاربر ذخیره شد. نقش و عضویت او را از بخش عضویت‌ها تعیین کنید.")
             return redirect("panel-user-list")
-    return form_page(request, form, "مدیریت کاربر", "panel-user-list", managed_user=user)
+    return form_page(request, form, "مدیریت کاربر", "panel-user-list", managed_user=user, can_set_staff_access=bool(user and not user.is_superuser and user.company_memberships.filter(role="employee", is_active=True).exists() and not user.company_memberships.filter(role="owner").exists()))
 
 
 def user_create(request):
@@ -625,9 +637,9 @@ def device_bulk(request):
     if operation not in {"enable", "disable", "navy", "light", "carbon"}:
         return HttpResponse("عملیات نامعتبر است.", status=400)
     for device in devices:
-        if not is_platform_owner(request.user) and (device.company_id not in managed_company_ids(request.user) or device.normalized_plan != "pro"):
+        if not is_platform_user(request.user) and (device.company_id not in managed_company_ids(request.user) or device.normalized_plan != "pro"):
             raise PermissionDenied
-        if operation in {"navy", "light", "carbon"} and not is_platform_owner(request.user) and not rule_for(device.normalized_plan).can_change_theme:
+        if operation in {"navy", "light", "carbon"} and not is_platform_user(request.user) and not rule_for(device.normalized_plan).can_change_theme:
             raise PermissionDenied
         if operation == "enable" and (not device.is_active or device.provisioning_state == "suspended"):
             raise PermissionDenied("دستگاه تعلیق‌شده فقط توسط مدیر اصلی آزاد می‌شود.")
@@ -731,7 +743,7 @@ def live_stream(request):
         while time.monotonic() < deadline:
             request.user.refresh_from_db(fields=["is_active"])
             device = visible_devices(request.user).filter(pk=device_id).first()
-            if device is None:
+            if device is None or not route_allowed(request.user, "panel-live-stream"):
                 yield 'event: revoked\ndata: {}\n\n'
                 return
             data = device_content(device)
@@ -755,3 +767,28 @@ def buzzer_history(request, pk):
     page = Paginator(device.buzzer_events.order_by("-created_at"), 30).get_page(request.GET.get("page"))
     page.object_list = [{"cells": [event.created_at, event.reason, event.item_key, "تأیید دستگاه" if event.acknowledged_at else ("انتشار در MQTT" if event.published_at else "بدون تأیید انتشار"), event.expires_at]} for event in page.object_list]
     return render(request, "core/portal/listing.html", {"heading": "سوابق هشدار بازر", "columns": ["زمان", "قانون", "اطلاعات", "وضعیت تحویل", "مهلت اجرای بوق"], "rows": page, "note": "این سوابق با پایان مهلت اجرای بوق پاک نمی‌شوند. انتشار در MQTT به معنی تأیید اجرای بوق نیست."})
+
+
+@owner_only
+def user_access(request, pk):
+    from core.models import StaffAccess, CompanyMembership
+    from core.platform_forms import StaffAccessForm
+    user = get_object_or_404(get_user_model(), pk=pk)
+    if user.is_superuser or CompanyMembership.objects.filter(user=user, role='owner').exists():
+        raise PermissionDenied('مالک سامانه دسترسی کامل دارد؛ برای دسترسی محدود حساب کارمند جدا بسازید.')
+    if not CompanyMembership.objects.filter(user=user, role='employee', is_active=True).exists():
+        raise PermissionDenied('ابتدا نقش کارمند سامانه را در بخش عضویت‌ها به این حساب بدهید.')
+    obj = StaffAccess.objects.filter(user=user).first()
+    form = StaffAccessForm(request.POST if request.method == 'POST' else None, initial={'permissions': obj.permissions if obj else []})
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            get_user_model().objects.select_for_update().get(pk=user.pk)
+            selected = sorted(form.cleaned_data['permissions'])
+            previous = StaffAccess.objects.filter(user=user).values_list('permissions', flat=True).first() or []
+            StaffAccess.objects.update_or_create(user=user, defaults={'permissions': selected})
+            audit(request, 'staff.permissions', user)
+            for permission in sorted(set(previous) ^ set(selected)):
+                audit(request, 'staff.permission.grant' if permission in selected else 'staff.permission.revoke', f'{user.pk}: {permission}')
+        messages.success(request, 'مجوزها ذخیره شدند و از درخواست بعدی کارمند اعمال می‌شوند.')
+        return redirect('panel-user-access', pk=user.pk)
+    return form_page(request, form, 'دسترسی‌های کارمند: ' + user.username, 'panel-user-list')

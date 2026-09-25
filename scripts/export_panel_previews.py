@@ -25,6 +25,12 @@ if "--settings-panels" in sys.argv:
     if device is None:
         raise RuntimeError("Seed the demo before exporting settings panels")
     views = [("buzzer", "maryam", f"/panel/devices/{device.pk}/buzzer/new/", "قانون بازر"), ("sources-settings", "admin", "/panel/data-sources/new/", "منبع اطلاعات"), ("connections", "admin", "/panel/connections/", "ارتباطات"), ("integration-settings", "admin", "/panel/integrations/new/", "توکن و API")]
+if "--staff-access" in sys.argv:
+    from core.models import CompanyMembership, StaffAccess
+    user, _ = get_user_model().objects.get_or_create(username="support-demo", defaults={"first_name": "پشتیبان آزمایشی"})
+    CompanyMembership.objects.get_or_create(user=user, role="employee", defaults={"is_active": True})
+    StaffAccess.objects.update_or_create(user=user, defaults={"permissions": ["devices.view", "firmware.view", "monitoring.view"]})
+    views = [("staff-access", "admin", f"/panel/users/{user.pk}/access/", "دسترسی‌های کارمند")]
 fragments = []
 for key, username, url, label in views:
     client = Client()
@@ -72,7 +78,7 @@ scoped = re.sub(r'\bbody\b', ':scope', scoped)
 scoped = re.sub(r'--([a-zA-Z][\w-]*)', r'--gp-\1', scoped)
 scoped += '\n.gp-shell{min-height:0}.gp-sidebar{position:relative;top:auto;height:auto;overflow:visible}.gp-content{padding:26px}.gp-topbar{padding:0 26px}[data-preview][hidden]{display:none!important}.gp-preview-tabs{display:flex;flex-wrap:wrap;gap:8px;padding:14px;background:var(--gp-surface);border-bottom:1px solid var(--gp-line)}.gp-preview-tabs button{padding:7px 16px;border:1px solid var(--gp-line);border-radius:10px;background:var(--gp-surface2);color:var(--gp-ink)}.gp-preview-tabs button[aria-pressed=true]{background:var(--gp-brand);color:white}@media(max-width:760px){.gp-sidebar{display:none;transform:none}.gp-sidebar.gp-open{display:flex}.gp-shell{display:block}.gp-content{padding:18px}}'
 controls = '<div class="gp-preview-tabs" role="group" aria-label="انتخاب پنل">'+''.join(f'<button type="button" data-show="{key}" aria-pressed="{str(key == views[0][0]).lower()}">{label}</button>' for key, _, _, label in views)+'</div>'
-fragment_path = ROOT.parent / ('gadget-settings-preview.html' if '--settings-panels' in sys.argv else 'gadget-panels-preview.html')
+fragment_path = ROOT.parent / ('gadget-staff-access.html' if '--staff-access' in sys.argv else 'gadget-settings-preview.html' if '--settings-panels' in sys.argv else 'gadget-panels-preview.html')
 fragment_path.write_text('<div id="gadget-panels-preview" dir="rtl" data-theme="light"><style>@scope (#gadget-panels-preview){'+scoped+'}</style>'+controls+''.join(fragments)+'''</div>
 <script>
 (() => {

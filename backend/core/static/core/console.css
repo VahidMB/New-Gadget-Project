@@ -2,3 +2,5 @@
 
 #id_sources>div{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}#id_sources label{flex:1;margin:0}.order-button{padding:4px 12px;background:var(--surface2);border:1px solid var(--line);color:var(--ink);border-radius:8px}
 .market-foot time{font-size:11px;overflow-wrap:anywhere}
+
+.staff-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.staff-choices label{padding:12px;background:var(--surface2);border-radius:9px;display:flex;align-items:center;min-height:44px}.staff-choices input{flex-shrink:0}@media(max-width:760px){.staff-choices{grid-template-columns:1fr}}

@@ -6,6 +6,7 @@ from core import console_views as console
 from django.shortcuts import redirect
 
 urlpatterns = [
+    path("panel/users/<int:pk>/access/", console.user_access, name="panel-user-access"),
     path("panel/devices/<int:pk>/buzzer/history/", console.buzzer_history, name="panel-buzzer-history"),
     path("panel/live/stream/", console.live_stream, name="panel-live-stream"),
     path("panel/connections/", console.connection_settings, name="panel-connections"),

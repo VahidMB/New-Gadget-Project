@@ -1,0 +1,7 @@
+{% extends 'core/portal/base.html' %}
+{% block content %}
+<div class="page-head"><div><h1>میز کار من</h1><p class="subtitle">بخش‌های مجاز حساب شما</p></div></div>
+<section class="card"><div class="actions">
+{% for item in staff_menu %}<a class="button secondary" href="{% url item.route %}">{{ item.label }}</a>{% empty %}<p>هنوز دسترسی‌ای برای این حساب تعیین نشده است. مالک سامانه می‌تواند از صفحهٔ کاربر، مجوزها را انتخاب کند.</p>{% endfor %}
+</div></section>
+{% endblock %}

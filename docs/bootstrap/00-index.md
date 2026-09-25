@@ -60,3 +60,5 @@ Device Auth، OTA workflow، MQTT notification و monitoring عملیاتی نی
 - [18 — پنل قیمت، راه‌اندازی گرافیکی و پروتکل‌های جدید](18-price-platform.md)
 
 - [19 — دریافت لحظه‌ای، بازر و تنظیم گرافیکی ارتباطات](19-live-buzzer-connections.md)
+
+- [۲۰. مجوزهای انتخابی کارکنان سرور](20-staff-permissions.md)

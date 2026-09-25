@@ -466,3 +466,4 @@ class DeviceStatus(models.Model):
         return f"{self.device.external_id} - {self.status}"
 
 from core.platform_models import (Integration, PlatformSettings, DevicePreference, SourceSelection, PriceList, PriceItem, CampaignDelivery, AuditEvent, ResourceSnapshot, BuzzerRule, BuzzerEvent, DeviceBrokerCredential)  # noqa: E402,F401
+from core.platform_models import StaffAccess  # noqa: E402,F401

@@ -1,4 +1,4 @@
-{% extends 'core/portal/base.html' %}
+{% extends 'core/portal/base.html' %}{% load staff_permissions %}
 {% block title %}بارگذاری Firmware · مدیریت گجت{% endblock %}
 {% block content %}
 <h1>بارگذاری Firmware جدید</h1>
@@ -6,6 +6,6 @@
 <form method="post" enctype="multipart/form-data">{% csrf_token %}
   {{ form.non_field_errors }}
   {% for field in form %}<label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.help_text }}{{ field.errors }}{% endfor %}
-  <div class="actions"><button type="submit">بارگذاری و ثبت نسخه</button><a class="button" href="{% url 'panel-firmware-list' %}">انصراف</a></div>
+  <div class="actions"><button type="submit">بارگذاری و ثبت نسخه</button>{% access 'panel-firmware-list' %}<a class="button" href="{% url 'panel-firmware-list' %}">انصراف</a>{% endaccess %}</div>
 </form>
 {% endblock %}
