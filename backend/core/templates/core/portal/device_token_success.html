@@ -1,3 +1,3 @@
-{% extends 'core/portal/base.html' %}
+{% extends 'core/portal/base.html' %}{% load staff_permissions %}
 {% block title %}توکن دستگاه · مدیریت گجت{% endblock %}
-{% block content %}<section class="card"><h1>توکن دستگاه صادر شد</h1><p>این توکن فقط همین یک‌بار نمایش داده می‌شود. آن را در محل امنی ثبت کنید.</p><p class="token">{{ token }}</p><div class="actions"><a class="button" href="{% url 'panel-device-detail' device.pk %}">بازگشت به دستگاه</a></div></section>{% endblock %}
+{% block content %}<section class="card"><h1>توکن دستگاه صادر شد</h1><p>این توکن فقط همین یک‌بار نمایش داده می‌شود. آن را در محل امنی ثبت کنید.</p><p class="token">{{ token }}</p><div class="actions">{% access 'panel-device-detail' %}<a class="button" href="{% url 'panel-device-detail' device.pk %}">بازگشت به دستگاه</a>{% endaccess %}</div></section>{% endblock %}

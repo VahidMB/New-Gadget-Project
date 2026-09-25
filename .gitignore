@@ -15,3 +15,13 @@ htmlcov/
 node_modules/
 data/media/*
 !data/media/.gitkeep
+
+backend/runtime/
+backend/staticfiles/
+backend/media/
+backend/pytest-of-root/
+.env.guided
+.env.production
+.env.test
+
+pytest-of-root/

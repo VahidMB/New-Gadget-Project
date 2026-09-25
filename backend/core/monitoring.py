@@ -14,9 +14,21 @@ from django.db.models import F
 from django.utils import timezone
 from redis import Redis
 
-from core.models import DeviceStatus, ServiceHealth
+from core.models import DeviceStatus, ServiceHealth, Integration
+from core.runtime import runtime_setting
 
 Probe = Callable[[], None]
+
+
+def _probe_api() -> None:
+    from urllib.request import urlopen, Request
+    from urllib.parse import urlsplit
+    from core.runtime import platform_settings
+    host = urlsplit(platform_settings().public_base_url).hostname or "localhost"
+    request = Request(getattr(settings, "INTERNAL_API_URL", "http://api:8000") + "/api/v1/ping/", headers={"Host": host})
+    with urlopen(request, timeout=2) as response:
+        if response.status != 200:
+            raise RuntimeError("API liveness failed")
 
 
 def _probe_database() -> None:
@@ -31,7 +43,7 @@ def _probe_redis() -> None:
 
 
 def _probe_mqtt() -> None:
-    with socket.create_connection((settings.MQTT_HOST, settings.MQTT_PORT), timeout=1):
+    with socket.create_connection((runtime_setting("MQTT_HOST"), runtime_setting("MQTT_PORT")), timeout=1):
         pass
 
 
@@ -49,7 +61,7 @@ def _record_result(service_name: str, probe: Probe) -> ServiceHealth:
         error_message = ""
     except Exception as exc:  # Each unavailable dependency must be recorded, not crash the check run.
         service_status = "down"
-        error_message = str(exc)[:2000]
+        error_message = type(exc).__name__ + ": probe failed"
 
     response_time_ms = round((time.monotonic() - started_at) * 1000)
     health, created = ServiceHealth.objects.get_or_create(
@@ -80,18 +92,24 @@ def _record_result(service_name: str, probe: Probe) -> ServiceHealth:
 def check_services() -> list[ServiceHealth]:
     """Probe every deployed dependency and persist a fresh status snapshot."""
     probes: tuple[tuple[str, Probe], ...] = (
-        ("api", lambda: None),
+        ("api", _probe_api),
         ("db", _probe_database),
         ("redis", _probe_redis),
         ("mqtt", _probe_mqtt),
         ("worker", _probe_worker),
     )
-    return [_record_result(service_name, probe) for service_name, probe in probes]
+    results = [_record_result(service_name, probe) for service_name, probe in probes]
+    for integration in Integration.objects.filter(is_active=True, kind__in=["wordpress", "telegram"]):
+        if integration.kind == "wordpress" and integration.endpoint:
+            from core.source_engine import fetch_public
+            results.append(_record_result("wordpress", lambda: fetch_public(integration.endpoint)))
+    return results
 
 
 def mark_stale_devices_offline() -> int:
     """Mark online/updating devices offline once their heartbeat exceeds the configured age."""
-    stale_before = timezone.now() - timedelta(seconds=settings.DEVICE_HEARTBEAT_STALE_AFTER_SECONDS)
+    from core.runtime import platform_settings
+    stale_before = timezone.now() - timedelta(seconds=platform_settings().heartbeat_timeout)
     return DeviceStatus.objects.filter(
         status__in=["online", "updating"],
         last_heartbeat_at__lt=stale_before,

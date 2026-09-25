@@ -1,0 +1,96 @@
+x-app: &app
+  build: ./backend
+  env_file: .env.guided
+  environment: &app-env
+    POSTGRES_HOST: db
+    POSTGRES_PORT: 5432
+    REDIS_URL: redis://redis:6379/0
+    CONTENT_CACHE_URL: redis://redis:6379/1
+    GADGET_STATE_DIR: /app/runtime
+    MQTT_HOST: mqtt
+    MQTT_PORT: 1883
+    MQTT_USE_TLS: 0
+    GADGET_MANAGED_BROKER: 1
+  volumes:
+    - runtime:/app/runtime
+    - media:/app/media
+  restart: unless-stopped
+services:
+  api:
+    <<: *app
+    environment:
+      <<: *app-env
+      GADGET_LOCAL_HTTP: 1
+    ports: ["${BIND_ADDRESS:-127.0.0.1}:8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_started}
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8000"]
+      interval: 5s
+      retries: 30
+  worker:
+    <<: *app
+    command: celery -A gadget_server worker --loglevel=INFO
+    depends_on:
+      api: {condition: service_healthy}
+  beat:
+    <<: *app
+    command: celery -A gadget_server beat --loglevel=INFO --schedule=/app/runtime/celerybeat-schedule
+    depends_on:
+      api: {condition: service_healthy}
+  collector:
+    <<: *app
+    command: python manage.py collect_resources --loop
+    pid: host
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      api: {condition: service_healthy}
+  db:
+    image: postgres:16-alpine
+    env_file: .env.guided
+    volumes: ["postgres:/var/lib/postgresql/data"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save '' --appendonly no
+    restart: unless-stopped
+  mqtt:
+    image: eclipse-mosquitto:2
+    entrypoint: ["/bin/sh", "/managed-entrypoint.sh"]
+    volumes:
+      - managed_broker:/managed:ro
+      - ./infra/managed/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/managed/mqtt-entrypoint.sh:/managed-entrypoint.sh:ro
+    restart: unless-stopped
+  broker_config:
+    <<: *app
+    command: python manage.py render_broker_credentials --loop
+    volumes:
+      - runtime:/app/runtime
+      - managed_broker:/managed
+    depends_on:
+      api: {condition: service_healthy}
+  gateway:
+    profiles: ["public"]
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./infra/managed/Caddyfile:/etc/caddy/Caddyfile:ro
+      - gateway_data:/data
+      - gateway_config:/config
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  postgres:
+  runtime:
+  media:
+  managed_broker:
+  gateway_data:
+  gateway_config:

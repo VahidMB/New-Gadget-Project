@@ -1,7 +1,7 @@
-{% extends 'core/portal/base.html' %}
+{% extends 'core/portal/base.html' %}{% load staff_permissions %}
 {% block title %}دستگاه‌ها · مدیریت گجت{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>دستگاه‌ها</h1><p class="muted">فهرست دستگاه‌های قابل‌مشاهدهٔ شما</p></div>{% if is_platform_owner %}<a class="button" href="{% url 'panel-device-create' %}">افزودن دستگاه</a>{% endif %}</div>
+<div class="page-head"><div><h1>دستگاه‌ها</h1><p class="muted">فهرست دستگاه‌های قابل‌مشاهدهٔ شما</p></div>{% if is_platform_owner %}{% access 'panel-device-create' %}<a class="button" href="{% url 'panel-device-create' %}">افزودن دستگاه</a>{% endaccess %}{% endif %}</div>
 <div class="table-wrap"><table><thead><tr><th>شرکت</th><th>نام</th><th>شناسه</th><th>اشتراک</th><th>راه‌اندازی</th><th>فعال</th><th></th></tr></thead>
-<tbody>{% for device in devices %}<tr><td>{{ device.company|default:'بدون شرکت' }}</td><td>{{ device.name|default:'—' }}</td><td>{{ device.external_id }}</td><td>{{ device.plan|default:'—' }}</td><td><span class="status">{{ device.get_provisioning_state_display }}</span></td><td>{{ device.is_active|yesno:'بله,خیر' }}</td><td><a class="button secondary" href="{% url 'panel-device-detail' device.pk %}">جزئیات</a></td></tr>{% empty %}<tr><td class="empty" colspan="7">دستگاهی برای شما وجود ندارد.</td></tr>{% endfor %}</tbody></table></div>
+<tbody>{% for device in devices %}<tr><td>{{ device.company|default:'بدون شرکت' }}</td><td>{{ device.name|default:'—' }}</td><td>{{ device.external_id }}</td><td>{{ device.plan|default:'—' }}</td><td><span class="status">{{ device.get_provisioning_state_display }}</span></td><td>{{ device.is_active|yesno:'بله,خیر' }}</td><td>{% access 'panel-device-detail' %}<a class="button secondary" href="{% url 'panel-device-detail' device.pk %}">جزئیات</a>{% endaccess %}</td></tr>{% empty %}<tr><td class="empty" colspan="7">دستگاهی برای شما وجود ندارد.</td></tr>{% endfor %}</tbody></table></div>
 {% endblock %}

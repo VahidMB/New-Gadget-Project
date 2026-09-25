@@ -40,3 +40,10 @@ format:
 	docker compose exec api ruff format .
 
 check: lint test
+
+.PHONY: guided test-setup
+guided:
+	python3 scripts/guided_setup.py
+
+test-setup:
+	python3 scripts/guided_setup.py --test

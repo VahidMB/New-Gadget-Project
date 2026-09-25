@@ -56,3 +56,9 @@
 
 این مستندات فقط برای **زیرساخت اولیه استاندارد** هستند (Backend + Dependencies + Automation).  
 Device Auth، OTA workflow، MQTT notification و monitoring عملیاتی نیز به این baseline افزوده شده‌اند.
+
+- [18 — پنل قیمت، راه‌اندازی گرافیکی و پروتکل‌های جدید](18-price-platform.md)
+
+- [19 — دریافت لحظه‌ای، بازر و تنظیم گرافیکی ارتباطات](19-live-buzzer-connections.md)
+
+- [۲۰. مجوزهای انتخابی کارکنان سرور](20-staff-permissions.md)

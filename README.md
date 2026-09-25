@@ -1,6 +1,12 @@
-# Gadget Backend (Professional Bootstrap)
+# Gadget Price Platform
  
-Backend and infrastructure baseline for an ESP32 gadget platform.
+Django control panels and backend for market prices, company price lists, and ESP32 information displays.
+
+Latest: [Live sources, buzzer rules, graphical connections and retention](docs/bootstrap/19-live-buzzer-connections.md).
+
+New Persian guide: [Price platform, graphical setup and communication protocols](docs/bootstrap/18-price-platform.md).
+
+Start private graphical setup with `make guided` (or `make test-setup`), then open `/setup/`. Application integrations and encrypted credentials are managed in the owner panel. Firmware source and the interactive Telegram bot are separate projects/stages.
 
 ## Detailed guides (separate files)
 - Reliability fixes and upgrade notes: [docs/bootstrap/17-reliability-upgrade.md](docs/bootstrap/17-reliability-upgrade.md)
@@ -55,14 +61,11 @@ make up
 
 ## Why this is production-minded
 - Reproducible environment (Docker)
-- Environment-based configuration (`.env`)
+- Graphical application configuration; automatically generated infrastructure secrets
 - Service separation (API/DB/Cache/MQTT)
 - Baseline CI for lint + tests
 - Ready for secure OTA and device auth extensions
 
-## Next implementation steps
-1. Add `Device` model and per-device API key.
-2. Add token/certificate-based device auth.
-3. Add Celery worker and periodic data fetch jobs.
-4. Add signed OTA metadata + firmware delivery endpoint.
-5. Add Nginx reverse proxy with TLS in deployment.
+## Validation before public deployment
+
+Run the PostgreSQL CI suite, real browser checks, external integration checks, MQTT ACL tests and on-device OTA checks. The SQLite demo is for local review only. See the new guide for limitations and migration notes.

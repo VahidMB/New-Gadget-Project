@@ -13,6 +13,7 @@ from core.access import is_platform_user
 from core.firmware import select_firmware_release
 from core.device_auth import check_device_token
 from core.metrics import render_metrics
+from core.runtime import runtime_setting, platform_settings
 from core.models import DeviceStatus, FirmwareDeployment, FirmwareRelease, ServiceHealth, SyncNotification, WordPressDevice
 from core.services import (
     get_device_display_config,
@@ -54,7 +55,7 @@ def health(request):
 
 def metrics(request):
     """Expose Prometheus metrics; require a bearer token when configured."""
-    configured_token = settings.METRICS_TOKEN
+    configured_token = runtime_setting("METRICS_TOKEN")
     if configured_token and not secrets.compare_digest(
         request.headers.get("Authorization", "").removeprefix("Bearer "), configured_token
     ):
@@ -64,7 +65,7 @@ def metrics(request):
 
 @api_view(["POST"])
 def wordpress_webhook(request):
-    secret = settings.WORDPRESS_WEBHOOK_SECRET
+    secret = runtime_setting("WORDPRESS_WEBHOOK_SECRET")
     if not secret:
         return Response({"detail": "WORDPRESS_WEBHOOK_SECRET is not configured"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
@@ -74,7 +75,7 @@ def wordpress_webhook(request):
         return Response({"detail": "Missing signature headers"}, status=status.HTTP_400_BAD_REQUEST)
     if not is_wordpress_timestamp_fresh(
         timestamp=timestamp,
-        max_age_seconds=settings.WORDPRESS_WEBHOOK_MAX_AGE_SECONDS,
+        max_age_seconds=platform_settings().wordpress_signature_max_age,
     ):
         return Response({"detail": "Expired or invalid webhook timestamp"}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -93,7 +94,7 @@ def wordpress_webhook(request):
 
 @api_view(["POST"])
 def wordpress_pull_sync(request):
-    token = settings.WORDPRESS_SYNC_TRIGGER_TOKEN
+    token = runtime_setting("WORDPRESS_SYNC_TRIGGER_TOKEN")
     if not token:
         return Response(
             {"detail": "WORDPRESS_SYNC_TRIGGER_TOKEN is not configured"},
@@ -146,7 +147,7 @@ def _authenticated_device(request, external_id: str) -> tuple[WordPressDevice | 
     except WordPressDevice.DoesNotExist:
         return None, Response({"detail": "Device not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    if not device.is_active or device.provisioning_state != WordPressDevice.ProvisioningState.PROVISIONED:
+    if not device.is_active or not device.customer_enabled or (device.company_id and not device.company.is_active) or (device.assigned_user_id and not device.assigned_user.is_active) or device.provisioning_state != WordPressDevice.ProvisioningState.PROVISIONED:
         return None, Response({"detail": "Device is not authorized"}, status=status.HTTP_403_FORBIDDEN)
 
     token = request.headers.get("X-Device-Token", "")
@@ -187,14 +188,13 @@ def device_heartbeat(request, external_id: str):
         return Response({"detail": "Invalid device status"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        battery_level = int(payload.get("battery_level", 0))
         signal_strength = int(payload.get("signal_strength", 0))
         config_version = int(payload.get("config_version", 0))
     except (TypeError, ValueError):
-        return Response({"detail": "Battery, signal, and config version must be integers"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Signal and config version must be integers"}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not 0 <= battery_level <= 100:
-        return Response({"detail": "Battery level must be between 0 and 100"}, status=status.HTTP_400_BAD_REQUEST)
+    if config_version < 0:
+        return Response({"detail": "Config version must be non-negative"}, status=status.HTTP_400_BAD_REQUEST)
 
     device_status, _ = DeviceStatus.objects.update_or_create(
         device=device,
@@ -203,7 +203,6 @@ def device_heartbeat(request, external_id: str):
             "last_heartbeat_at": timezone.now(),
             "last_config_version": config_version,
             "firmware_version": str(payload.get("firmware_version", ""))[:64],
-            "battery_level": battery_level,
             "signal_strength": signal_strength,
             "error_message": str(payload.get("error_message", "")),
         },
@@ -235,7 +234,11 @@ def device_firmware_update_check(request, external_id: str):
     deployment, _ = FirmwareDeployment.objects.get_or_create(device=device, release=release)
     download_url = release.download_url
     if release.firmware_file:
-        download_url = request.build_absolute_uri(release.firmware_file.url)
+        from django.urls import reverse
+        from core.runtime import platform_settings
+        path = reverse("firmware-download", args=[external_id, release.pk])
+        base = platform_settings().public_base_url
+        download_url = base.rstrip("/") + path if base else request.build_absolute_uri(path)
     return Response(
         {
             "update_available": True,

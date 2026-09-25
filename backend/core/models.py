@@ -6,6 +6,10 @@ from django.db import models
 
 
 class Company(models.Model):
+    account_kind = models.CharField(max_length=16, choices=[("personal", "شخصی"), ("business", "شرکت / نمایندگی")], default="business")
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="branches")
+    contact_name = models.CharField(max_length=150, blank=True)
+    contact_phone = models.CharField(max_length=40, blank=True)
     name = models.CharField(max_length=255, unique=True)
     slug = models.SlugField(max_length=100, unique=True)
     is_active = models.BooleanField(default=True)
@@ -26,9 +30,10 @@ class CompanyMembership(models.Model):
         EMPLOYEE = "employee", "Internal employee"
         COMPANY_ADMIN = "company_admin", "Company admin"
         COMPANY_OPERATOR = "company_operator", "Company operator"
+        MEMBER = "member", "کاربر دستگاه"
 
     PLATFORM_ROLES = {Role.OWNER, Role.EMPLOYEE}
-    COMPANY_ROLES = {Role.COMPANY_ADMIN, Role.COMPANY_OPERATOR}
+    COMPANY_ROLES = {Role.COMPANY_ADMIN, Role.COMPANY_OPERATOR, Role.MEMBER}
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="company_memberships")
     company = models.ForeignKey(Company, null=True, blank=True, on_delete=models.CASCADE, related_name="memberships")
@@ -60,12 +65,26 @@ class ExternalDataSource(models.Model):
         TELEGRAM = "telegram", "Telegram"
         RSS = "rss", "RSS Feed"
         INTERNAL = "internal", "Internal data"
+        WEB = "web", "صفحه وب"
 
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="external_data_sources")
+    company = models.ForeignKey(Company, null=True, blank=True, on_delete=models.CASCADE, related_name="external_data_sources")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="owned_sources")
+    category = models.CharField(max_length=16, choices=[("price", "قیمت"), ("news", "اخبار"), ("weather", "آب‌وهوا"), ("text", "متن")], default="price")
+    unit = models.CharField(max_length=40, blank=True)
+    ttl_seconds = models.PositiveIntegerField(default=300)
+    update_mode = models.CharField(max_length=16, choices=[("periodic", "دریافت دوره‌ای"), ("push", "لحظه‌ای؛ دریافت Webhook")], default="periodic")
+    encrypted_push_secret = models.TextField(blank=True, editable=False)
+    disposable = models.BooleanField(default=True)
+    extraction_pattern = models.CharField(max_length=500, blank=True)
+    telegram_chat_id = models.CharField(max_length=100, blank=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=255, blank=True)
+    disposable = models.BooleanField(default=False)
     name = models.CharField(max_length=255)
     source_type = models.CharField(max_length=64, choices=SourceType.choices, default=SourceType.HTTP_API)
     display_key = models.CharField(max_length=128)
-    endpoint_url = models.URLField(max_length=500)
+    endpoint_url = models.URLField(max_length=500, blank=True)
     refresh_interval_seconds = models.PositiveIntegerField(default=900)
     credential_reference = models.CharField(max_length=128, blank=True)
     title_path = models.CharField(max_length=255, blank=True)
@@ -81,6 +100,7 @@ class ExternalDataSource(models.Model):
         constraints = [
             models.UniqueConstraint(fields=("company", "name"), name="unique_company_external_data_source_name"),
             models.UniqueConstraint(fields=("company", "display_key"), name="unique_company_external_data_source_display_key"),
+            models.UniqueConstraint(fields=("display_key",), condition=models.Q(company__isnull=True), name="unique_global_source_key"),
         ]
 
     def __str__(self) -> str:
@@ -95,6 +115,10 @@ class MessageCampaign(models.Model):
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="message_campaigns")
     target_devices = models.ManyToManyField("WordPressDevice", related_name="message_campaigns", blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    price_list = models.ForeignKey("PriceList", null=True, blank=True, on_delete=models.SET_NULL, related_name="campaigns")
+    last_error = models.CharField(max_length=255, blank=True)
+    disposable = models.BooleanField(default=False)
     name = models.CharField(max_length=255)
     message = models.TextField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
@@ -134,6 +158,11 @@ class WordPressDevice(models.Model):
         SUSPENDED = "suspended", "Suspended"
 
     company = models.ForeignKey(Company, null=True, blank=True, on_delete=models.SET_NULL, related_name="devices")
+    assigned_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="assigned_devices")
+    recipient_name = models.CharField(max_length=150, blank=True)
+    recipient_contact = models.CharField(max_length=150, blank=True)
+    group_name = models.CharField(max_length=100, blank=True)
+    customer_enabled = models.BooleanField(default=True)
     external_id = models.CharField(max_length=128, unique=True)
     customer_external_id = models.CharField(max_length=128, blank=True)
     serial_number = models.CharField(max_length=128, blank=True)
@@ -288,6 +317,9 @@ class SyncNotification(models.Model):
 
 
 class PlanRule(models.Model):
+    max_telegram_sources = models.PositiveIntegerField(default=0)
+    min_refresh_seconds = models.PositiveIntegerField(default=60)
+    can_send_messages = models.BooleanField(default=False)
     plan_name = models.CharField(max_length=64, unique=True)
     can_customize_ui = models.BooleanField(default=False)
     can_change_theme = models.BooleanField(default=False)
@@ -422,7 +454,6 @@ class DeviceStatus(models.Model):
     last_heartbeat_at = models.DateTimeField(null=True, blank=True)
     last_config_version = models.PositiveIntegerField(default=0)
     firmware_version = models.CharField(max_length=64, blank=True)
-    battery_level = models.PositiveIntegerField(default=0)
     signal_strength = models.IntegerField(default=0)
     error_message = models.TextField(blank=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -433,3 +464,6 @@ class DeviceStatus(models.Model):
 
     def __str__(self) -> str:
         return f"{self.device.external_id} - {self.status}"
+
+from core.platform_models import (Integration, PlatformSettings, DevicePreference, SourceSelection, PriceList, PriceItem, CampaignDelivery, AuditEvent, ResourceSnapshot, BuzzerRule, BuzzerEvent, DeviceBrokerCredential)  # noqa: E402,F401
+from core.platform_models import StaffAccess  # noqa: E402,F401
