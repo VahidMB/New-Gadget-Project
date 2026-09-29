@@ -29,10 +29,15 @@ def device_content(device):
     now = timezone.now()
     lists = []
     for price_list in PriceList.objects.filter(target_devices=device, is_active=True, company_id__in=ancestor_company_ids(device.company_id)):
+        from core.price_versions import current_release, visible_release_items
+        release = current_release(price_list)
+        if release:
+            lists.append({"id": price_list.pk, "name": price_list.name, "revision": str(release.pk), "items": visible_release_items(release), "updated_at": release.published_at.isoformat()})
+            continue
         items = []
         for item in price_list.items.all():
             valid = item.valid_until > now and item.amount is not None
-            items.append({"code": item.code, "name": item.name, "amount": format(item.amount.normalize(), "f") if valid else None, "unit": item.unit, "valid_until": item.valid_until.isoformat(), "status": "fresh" if valid else "expired"})
+            items.append({"code": item.code, "name": item.name, "amount": format(item.amount.normalize(), "f") if valid else None, "unit": item.unit, "valid_until": item.valid_until.isoformat(), "status": "fresh" if valid else "expired", "updated_at": item.updated_at.isoformat()})
         lists.append({"id": price_list.pk, "name": price_list.name, "revision": price_list.revision, "items": items})
     campaigns = MessageCampaign.objects.filter(target_devices=device, company_id__in=ancestor_company_ids(device.company_id), expires_at__gt=now).filter(Q(status="sent") | Q(deliveries__device=device, deliveries__delivered_at__isnull=False)).distinct().values("id", "name", "message", "expires_at")
     return {"server_time": now.isoformat(), "sources": sources, "price_lists": lists, "messages": list(campaigns), "poll_after_seconds": rule.min_refresh_seconds, "live_updates": getattr(getattr(device, "preferences", None), "live_updates", True)}

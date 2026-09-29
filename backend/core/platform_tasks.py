@@ -140,3 +140,15 @@ def publish_buzzer_events():
         event.save(update_fields=["published_at"])
         count += 1
     return count
+
+
+@shared_task
+def refresh_city_weather():
+    from core.studio_operations import refresh_weather
+    refresh_weather()
+
+
+@shared_task
+def publish_due_prices():
+    from core.studio_operations import publish_due_prices as publish
+    publish()

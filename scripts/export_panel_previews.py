@@ -31,6 +31,12 @@ if "--staff-access" in sys.argv:
     CompanyMembership.objects.get_or_create(user=user, role="employee", defaults={"is_active": True})
     StaffAccess.objects.update_or_create(user=user, defaults={"permissions": ["devices.view", "firmware.view", "monitoring.view"]})
     views = [("staff-access", "admin", f"/panel/users/{user.pk}/access/", "دسترسی‌های کارمند")]
+if "--studio" in sys.argv:
+    from core.models import DisplayProfile, DisplayTemplate
+    profile, _ = DisplayProfile.objects.get_or_create(name="پروفایل پیش‌نمایش خالی", defaults={"width": 480, "height": 320})
+    template, _ = DisplayTemplate.objects.get_or_create(key="blank-editor-preview", defaults={"name": "ویرایشگر — بوم خالی", "profile": profile})
+    views = [("display-studio", "admin", "/panel/studio/", "مدیریت قالب‌ها"), ("display-editor", "admin", f"/panel/studio/{template.pk}/", "ویرایشگر خالی"), ("operations", "admin", "/panel/operations/", "عملیات سرور")]
+    css += (ROOT / "backend/core/static/core/studio.css").read_text()
 fragments = []
 for key, username, url, label in views:
     client = Client()
@@ -53,6 +59,14 @@ for key, username, url, label in views:
     css_tag = soup.new_tag('style')
     css_tag.string = css
     soup.head.append(css_tag)
+    if "--studio" in sys.argv:
+        notice = soup.new_tag('p')
+        notice.string = 'پیش‌نمایش ایستای قالب واقعی با داده آزمایشی؛ فرم‌ها ارسال نمی‌شوند و صفحه‌ای برای گجت طراحی نشده است.'
+        soup.body.insert(0, notice)
+        screen = soup.select_one('#studio-screen')
+        if screen:
+            screen['style'] = 'width:480px;height:320px;background:#233b55'
+
     for link in soup.select('link[rel="stylesheet"]'):
         link.decompose()
     script = soup.new_tag('script')
@@ -78,7 +92,7 @@ scoped = re.sub(r'\bbody\b', ':scope', scoped)
 scoped = re.sub(r'--([a-zA-Z][\w-]*)', r'--gp-\1', scoped)
 scoped += '\n.gp-shell{min-height:0}.gp-sidebar{position:relative;top:auto;height:auto;overflow:visible}.gp-content{padding:26px}.gp-topbar{padding:0 26px}[data-preview][hidden]{display:none!important}.gp-preview-tabs{display:flex;flex-wrap:wrap;gap:8px;padding:14px;background:var(--gp-surface);border-bottom:1px solid var(--gp-line)}.gp-preview-tabs button{padding:7px 16px;border:1px solid var(--gp-line);border-radius:10px;background:var(--gp-surface2);color:var(--gp-ink)}.gp-preview-tabs button[aria-pressed=true]{background:var(--gp-brand);color:white}@media(max-width:760px){.gp-sidebar{display:none;transform:none}.gp-sidebar.gp-open{display:flex}.gp-shell{display:block}.gp-content{padding:18px}}'
 controls = '<div class="gp-preview-tabs" role="group" aria-label="انتخاب پنل">'+''.join(f'<button type="button" data-show="{key}" aria-pressed="{str(key == views[0][0]).lower()}">{label}</button>' for key, _, _, label in views)+'</div>'
-fragment_path = ROOT.parent / ('gadget-staff-access.html' if '--staff-access' in sys.argv else 'gadget-settings-preview.html' if '--settings-panels' in sys.argv else 'gadget-panels-preview.html')
+fragment_path = ROOT.parent / ('gadget-studio-preview.html' if '--studio' in sys.argv else 'gadget-staff-access.html' if '--staff-access' in sys.argv else 'gadget-settings-preview.html' if '--settings-panels' in sys.argv else 'gadget-panels-preview.html')
 fragment_path.write_text('<div id="gadget-panels-preview" dir="rtl" data-theme="light"><style>@scope (#gadget-panels-preview){'+scoped+'}</style>'+controls+''.join(fragments)+'''</div>
 <script>
 (() => {

@@ -79,3 +79,17 @@ def buzzer_rule_changed(sender, instance, raw=False, update_fields=None, **kwarg
 def connection_settings_changed(sender, raw=False, **kwargs):
     if not raw:
         refresh_all_device_configs()
+
+
+from core.models import PriceItem, ProductSample  # noqa: E402
+
+@receiver(post_save, sender=PriceItem)
+def product_price_history(sender, instance, raw=False, **kwargs):
+    if raw or instance.amount is None or getattr(instance, '_release_publication', False):
+        return
+    if instance.price_list.releases.filter(published_at__isnull=False).exists():
+        return  # Changes are drafts until a full release is activated.
+    last = ProductSample.objects.filter(item=instance).order_by('-observed_at', '-id').first()
+    if last is None or last.amount != instance.amount or last.unit != instance.unit:
+        from django.utils import timezone
+        ProductSample.objects.create(item=instance, observed_at=timezone.now(), amount=instance.amount, unit=instance.unit)

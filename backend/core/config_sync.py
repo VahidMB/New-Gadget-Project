@@ -57,6 +57,8 @@ def refresh_device_config(device_id, *, created=False):
             effective["live_updates"] = preference.live_updates
         from core.buzzer import rules_config
         from core.connections import device_connection_config
+        from core.studio_contract import assignments_for, preference_fingerprint
+        effective['display_contract'] = {'schema': 'gadget.display.v1', 'fetch_path': f'/api/v1/devices/{device.external_id}/display/', 'preferences': preference_fingerprint(device), 'assignments': [{'id': a.pk, 'version': a.version_id} for a in assignments_for(device)]}
         effective["buzzer"] = rules_config(device)
         effective["connections"] = device_connection_config(device)
         effective["data_refresh_seconds"] = max(5, rule.min_refresh_seconds)

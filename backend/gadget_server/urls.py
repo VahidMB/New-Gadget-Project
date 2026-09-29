@@ -3,9 +3,39 @@ from django.urls import include, path
 
 from core import portal_views
 from core import console_views as console
+from core import studio_views as studio
 from django.shortcuts import redirect
 
 urlpatterns = [
+    path("panel/studio/", studio.home, name="panel-studio"),
+    path("panel/studio/profiles/new/", studio.profile_editor, name="panel-profile-create"),
+    path("panel/studio/profiles/<int:pk>/", studio.profile_editor, name="panel-profile-edit"),
+    path("panel/studio/cities/new/", studio.city_editor, name="panel-city-create"),
+    path("panel/studio/cities/<int:pk>/", studio.city_editor, name="panel-city-edit"),
+    path("panel/studio/assets/new/", studio.asset_upload, name="panel-asset-upload"),
+    path("panel/studio/assets/<int:pk>/", studio.asset_preview, name="panel-asset-preview"),
+    path("panel/studio/new/", studio.template_create, name="panel-studio-create"),
+    path("panel/studio/<int:pk>/", studio.editor, name="panel-studio-editor"),
+    path("panel/studio/<int:pk>/save/", studio.save_draft, name="panel-studio-save"),
+    path("panel/studio/<int:pk>/publish/", studio.publish, name="panel-studio-publish"),
+    path("panel/studio/assignments/new/", studio.assignment_editor, name="panel-assignment-create"),
+    path("panel/studio/assignments/<int:pk>/", studio.assignment_editor, name="panel-assignment-edit"),
+    path("panel/devices/<int:pk>/simulator/", studio.simulator, name="panel-studio-simulator"),
+    path("panel/devices/<int:pk>/display-manifest/", studio.simulator_manifest, name="panel-studio-manifest"),
+    path("panel/devices/<int:pk>/display-prices/<int:list_pk>/", studio.simulator_prices, name="panel-studio-price-page"),
+    path("panel/devices/<int:pk>/display-preferences/", studio.preferences, name="panel-studio-preferences"),
+    path("panel/devices/<int:pk>/chart-preferences/", studio.chart_preferences, name="panel-chart-preferences"),
+    path("panel/devices/<int:pk>/receipts/", studio.receipts, name="panel-device-receipts"),
+    path("panel/data-sources/<int:pk>/fields/", studio.source_fields, name="panel-source-fields"),
+    path("panel/data-sources/<int:pk>/fields/new/", studio.field_editor, name="panel-source-field-create"),
+    path("panel/data-sources/<int:pk>/fields/<int:field_pk>/", studio.field_editor, name="panel-source-field-edit"),
+    path("panel/data-sources/<int:pk>/discover/", studio.discover_fields, name="panel-source-discover"),
+    path("panel/prices/<int:pk>/import/", studio.excel_upload, name="panel-price-import"),
+    path("panel/prices/<int:pk>/import/<uuid:batch_id>/", studio.import_mapping, name="panel-price-import-map"),
+    path("panel/prices/<int:pk>/releases/", studio.releases, name="panel-price-releases"),
+    path("panel/operations/", studio.operations, name="panel-operations"),
+    path("panel/operations/backup/", studio.backup_now, name="panel-backup-now"),
+    path("panel/operations/backup/<uuid:job_id>/", studio.backup_download, name="panel-backup-download"),
     path("panel/users/<int:pk>/access/", console.user_access, name="panel-user-access"),
     path("panel/devices/<int:pk>/buzzer/history/", console.buzzer_history, name="panel-buzzer-history"),
     path("panel/live/stream/", console.live_stream, name="panel-live-stream"),

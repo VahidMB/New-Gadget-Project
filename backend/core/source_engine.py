@@ -18,7 +18,7 @@ from core.models import ExternalDataSource, Integration
 MAX_BYTES = 1024 * 1024
 
 
-def fetch_public(url, headers=None):
+def fetch_public(url, headers=None, *, method="GET", body=None):
     parts = urlsplit(url)
     if parts.scheme not in {"https", "http"} or not parts.hostname or parts.username or parts.password:
         raise ValueError("آدرس باید HTTP یا HTTPS عمومی و بدون نام کاربری باشد.")
@@ -46,9 +46,9 @@ def fetch_public(url, headers=None):
         path = parts.path or "/"
         if parts.query:
             path += "?" + parts.query
-        connection.request("GET", path, headers=request_headers)
+        connection.request(method, path, body=body, headers=request_headers)
         response = connection.getresponse()
-        if response.status != 200:
+        if response.status not in {200, 201, 202, 204}:
             raise ValueError(f"پاسخ نامعتبر منبع: HTTP {response.status}")
         body = response.read(MAX_BYTES + 1)
         if len(body) > MAX_BYTES:
@@ -98,7 +98,9 @@ def extract(source, raw):
         if not match:
             raise ValueError("الگوی استخراج در متن پیدا نشد.")
         value = match.group(1) if match.groups() else match.group(0)
-    return {"title": title[:200], "value": value[:2000], "unit": source.unit}
+    from core.studio_sources import extract_fields
+    fields = extract_fields(source, raw) if source.source_type == "http" else {}
+    return {"title": title[:200], "value": value[:2000], "unit": source.unit, "fields": fields}
 
 
 def cache_key(source):
@@ -120,6 +122,8 @@ def store_value(source, content, observed_at=None):
     previous = read_value(source)
     if previous and previous["observed_at"] > observed_at.isoformat():
         return False
+    from core.studio_sources import record_fields
+    record_fields(source, content, observed_at)
     expires = observed_at + timedelta(seconds=source.ttl_seconds)
     cache.set(cache_key(source), {**content, "source_id": source.pk, "source": source.name, "category": source.category, "observed_at": observed_at.isoformat(), "expires_at": expires.isoformat()}, timeout=remaining)
     ExternalDataSource.objects.filter(pk=source.pk).update(last_success_at=now, last_attempt_at=now, last_error="")
@@ -145,29 +149,33 @@ def refresh_source(source):
         return False
     ExternalDataSource.objects.filter(pk=source.pk).update(last_attempt_at=timezone.now())
     try:
-        headers = {}
-        request_url = source.endpoint_url
-        if source.credential_reference:
-            credential = Integration.objects.filter(key=source.credential_reference, kind="provider", is_active=True, company_id=source.company_id).first()
-            if credential is None:
-                raise ValueError("اعتبارنامهٔ مجاز برای منبع پیدا نشد.")
-            target, allowed = urlsplit(source.endpoint_url), urlsplit(credential.endpoint)
-            if not allowed.hostname or (target.scheme, target.hostname, target.port) != (allowed.scheme, allowed.hostname, allowed.port):
-                raise ValueError("اعتبارنامه فقط برای میزبان ثبت‌شده مجاز است.")
-            header = credential.options.get("auth_header", "Authorization")
-            if not regex.fullmatch(r"[A-Za-z0-9_-]{1,64}", header) or header.lower() in {"host", "connection", "content-length", "transfer-encoding", "cookie", "proxy-authorization"}:
-                raise ValueError("Unsupported authentication header")
-            scheme = credential.options.get("auth_scheme", "Bearer" if header == "Authorization" else "")
-            if credential.options.get("auth_location") == "query":
-                parameter = credential.options.get("auth_parameter", "api_key")
-                query = [(key, value) for key, value in parse_qsl(target.query, keep_blank_values=True) if key != parameter]
-                query.append((parameter, credential.secret()))
-                request_url = urlunsplit((target.scheme, target.netloc, target.path, urlencode(query), ""))
-            else:
-                headers = {header: (str(scheme) + " " if scheme else "") + credential.secret()}
-        raw = fetch_public(request_url, headers)
+        raw = fetch_source_body(source.endpoint_url, source.credential_reference, source.company_id)
         return store_value(source, extract(source, raw))
     except Exception:
         # Never persist exception URLs, provider response bodies or secret headers.
         ExternalDataSource.objects.filter(pk=source.pk).update(last_error="دریافت یا استخراج ناموفق؛ آدرس، قالب پاسخ و اتصال را بررسی کنید.")
         return False
+
+
+def fetch_source_body(endpoint_url, credential_reference="", company_id=None):
+    headers = {}
+    request_url = endpoint_url
+    if credential_reference:
+        credential = Integration.objects.filter(key=credential_reference, kind="provider", is_active=True, company_id=company_id).first()
+        if credential is None:
+            raise ValueError("اعتبارنامهٔ مجاز برای منبع پیدا نشد.")
+        target, allowed = urlsplit(endpoint_url), urlsplit(credential.endpoint)
+        if not allowed.hostname or (target.scheme, target.hostname, target.port) != (allowed.scheme, allowed.hostname, allowed.port):
+            raise ValueError("اعتبارنامه فقط برای میزبان ثبت‌شده مجاز است.")
+        header = credential.options.get("auth_header", "Authorization")
+        if not regex.fullmatch(r"[A-Za-z0-9_-]{1,64}", header) or header.lower() in {"host", "connection", "content-length", "transfer-encoding", "cookie", "proxy-authorization"}:
+            raise ValueError("Unsupported authentication header")
+        scheme = credential.options.get("auth_scheme", "Bearer" if header == "Authorization" else "")
+        if credential.options.get("auth_location") == "query":
+            parameter = credential.options.get("auth_parameter", "api_key")
+            query = [(key, value) for key, value in parse_qsl(target.query, keep_blank_values=True) if key != parameter]
+            query.append((parameter, credential.secret()))
+            request_url = urlunsplit((target.scheme, target.netloc, target.path, urlencode(query), ""))
+        else:
+            headers = {header: (str(scheme) + " " if scheme else "") + credential.secret()}
+    return fetch_public(request_url, headers)
