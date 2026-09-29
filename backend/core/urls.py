@@ -42,3 +42,11 @@ urlpatterns += [
     path("devices/<str:external_id>/buzzer/<uuid:event_id>/ack/", platform_api.buzzer_ack, name="buzzer-ack"),
     path("internal/tls-permission/", platform_api.tls_permission, name="tls-permission"),
 ]
+
+from core import studio_api  # noqa: E402
+urlpatterns += [
+    path("devices/<str:external_id>/display/", studio_api.display, name="device-display"),
+    path("devices/<str:external_id>/display/receipt/", studio_api.receipt, name="device-display-receipt"),
+    path("devices/<str:external_id>/display/assets/<int:pk>/", studio_api.asset, name="device-display-asset"),
+    path("devices/<str:external_id>/price-lists/<int:pk>/page/", studio_api.price_page, name="device-price-page"),
+]

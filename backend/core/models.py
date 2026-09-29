@@ -467,3 +467,4 @@ class DeviceStatus(models.Model):
 
 from core.platform_models import (Integration, PlatformSettings, DevicePreference, SourceSelection, PriceList, PriceItem, CampaignDelivery, AuditEvent, ResourceSnapshot, BuzzerRule, BuzzerEvent, DeviceBrokerCredential)  # noqa: E402,F401
 from core.platform_models import StaffAccess  # noqa: E402,F401
+from core.studio_models import (DisplayProfile, DisplayAsset, DisplayTemplate, DisplayVersion, DisplayAssignment, City, DisplayPreference, SourceField, MarketSample, PriceRelease, ProductSample, ImportBatch, DeviceReceipt, OperationsPolicy, OperationJob, OperationalAlert)  # noqa: E402,F401

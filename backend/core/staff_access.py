@@ -70,9 +70,19 @@ def route_allowed(user, name):
         return True  # Existing customer/company checks remain authoritative.
     if name == 'panel-dashboard':
         return True
+    if name == 'panel-asset-preview':
+        return has_permission(user, 'templates.view') or has_permission(user, 'devices.view')
     return bool(name in ROUTES and has_permission(user, ROUTES[name]))
 
 
 def delegated_route_allowed(request):
     name = request.resolver_match.url_name if request.resolver_match else None
     return is_platform_user(request.user) and name in ROUTES and route_allowed(request.user, name)
+
+routes('templates.view', 'studio asset-preview')
+routes('templates.manage', 'profile-create profile-edit city-create city-edit asset-upload studio-create studio-editor studio-save studio-publish assignment-create assignment-edit')
+routes('devices.view', 'studio-simulator studio-manifest studio-price-page device-receipts')
+routes('devices.manage', 'studio-preferences chart-preferences')
+routes('sources.manage', 'source-fields source-field-create source-field-edit source-discover')
+routes('prices.manage', 'price-import price-import-map price-releases')
+OWNER_ROUTES.update({'panel-operations', 'panel-backup-now', 'panel-backup-download'})

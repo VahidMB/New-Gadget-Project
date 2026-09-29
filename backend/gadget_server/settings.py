@@ -116,6 +116,8 @@ CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 HEALTH_CHECK_STALE_AFTER_SECONDS = int(os.getenv("HEALTH_CHECK_STALE_AFTER_SECONDS", "180"))
 DEVICE_HEARTBEAT_STALE_AFTER_SECONDS = int(os.getenv("DEVICE_HEARTBEAT_STALE_AFTER_SECONDS", "300"))
 CELERY_BEAT_SCHEDULE = {
+    "publish-due-prices": {"task": "core.platform_tasks.publish_due_prices", "schedule": 5.0},
+    "refresh-city-weather": {"task": "core.platform_tasks.refresh_city_weather", "schedule": 60.0},
     "buzzer-rules": {"task": "core.platform_tasks.process_buzzer_rules", "schedule": 2.0},
     "publish-content-hints": {"task": "core.platform_tasks.publish_content_hints", "schedule": 5.0},
     "refresh-source-values": {"task": "core.platform_tasks.refresh_sources", "schedule": 5.0},
@@ -157,3 +159,10 @@ if os.getenv("GADGET_LOCAL_HTTP") == "1":
     CSRF_COOKIE_SECURE = False
 
 SECURE_REDIRECT_EXEMPT = [r"^api/v1/ping/$", r"^api/v1/internal/tls-permission/$"]
+
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_SOFT_TIME_LIMIT = 240
+CELERY_TASK_TIME_LIMIT = 300
+CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": 900}

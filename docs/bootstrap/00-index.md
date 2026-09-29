@@ -62,3 +62,5 @@ Device Auth، OTA workflow، MQTT notification و monitoring عملیاتی نی
 - [19 — دریافت لحظه‌ای، بازر و تنظیم گرافیکی ارتباطات](19-live-buzzer-connections.md)
 
 - [۲۰. مجوزهای انتخابی کارکنان سرور](20-staff-permissions.md)
+
+- [صفحه‌ساز، قرارداد نمایشگر و عملیات](21-display-studio.md) — راهنمای شاخه display-studio-production و آزمون‌های پذیرش لازم.

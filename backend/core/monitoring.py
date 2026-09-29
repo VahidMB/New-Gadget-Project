@@ -42,6 +42,16 @@ def _probe_redis() -> None:
     Redis.from_url(settings.REDIS_URL, socket_connect_timeout=1, socket_timeout=1).ping()
 
 
+def _probe_cache() -> None:
+    from django.core.cache import cache
+    import uuid
+    key = 'health:'+str(uuid.uuid4())
+    cache.set(key, 'ok', 10)
+    if cache.get(key) != 'ok':
+        raise RuntimeError('Content cache read/write failed')
+    cache.delete(key)
+
+
 def _probe_mqtt() -> None:
     with socket.create_connection((runtime_setting("MQTT_HOST"), runtime_setting("MQTT_PORT")), timeout=1):
         pass
@@ -95,6 +105,7 @@ def check_services() -> list[ServiceHealth]:
         ("api", _probe_api),
         ("db", _probe_database),
         ("redis", _probe_redis),
+        ("cache", _probe_cache),
         ("mqtt", _probe_mqtt),
         ("worker", _probe_worker),
     )

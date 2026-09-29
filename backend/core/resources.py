@@ -15,9 +15,15 @@ def collect_local_resources():
             if name.startswith("postgres"):
                 service = "db"
             elif "redis-server" in name:
-                service = "redis"
+                service = "cache" if ":6380" in command or "--port 6380" in command else "redis"
             elif "mosquitto" in name:
                 service = "mqtt"
+            elif "manage.py run_operations" in command:
+                service = "backups" if "--backups" in command else "operations"
+            elif "manage.py render_broker_credentials" in command:
+                service = "broker_config"
+            elif "manage.py collect_resources" in command:
+                service = "collector"
             elif "celery" in command:
                 service = "beat" if " beat " in " " + command + " " else "worker"
             elif "gunicorn" in command or "manage.py runserver" in command:

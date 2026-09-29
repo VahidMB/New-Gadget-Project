@@ -437,7 +437,13 @@ def price_detail(request, pk):
     price_list = get_object_or_404(qs, pk=pk)
     purge_expired_content()
     editable = is_platform_user(request.user) or (price_list.company_id in managed_company_ids(request.user) and account_rule(price_list.company).can_send_messages)
-    return render(request, "core/portal/prices.html", {"price_list": price_list, "editable": editable, "now": timezone.now()})
+    from core.price_versions import current_release, visible_release_items
+    release = current_release(price_list)
+    rows = price_list.items.all()
+    if release and not editable:
+        from django.utils.dateparse import parse_datetime
+        rows = [{**r, 'valid_until': parse_datetime(r['valid_until'])} for r in visible_release_items(release)]
+    return render(request, "core/portal/prices.html", {"price_list": price_list, "price_rows": rows, "versioned": bool(release), "editable": editable, "now": timezone.now()})
 
 
 @login_required

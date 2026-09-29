@@ -127,7 +127,7 @@ def test_all_panel_routes_reject_ungranted_employee_get_and_post(staff):
     for route in get_resolver().url_patterns:
         if getattr(route, 'name', None) not in set(ROUTES) | OWNER_ROUTES:
             continue
-        kwargs = {key: 1 for key in route.pattern.converters}
+        kwargs = {key: ('00000000-0000-0000-0000-000000000001' if converter.__class__.__name__ == 'UUIDConverter' else 1) for key, converter in route.pattern.converters.items()}
         url = reverse(route.name, kwargs=kwargs)
         assert client.get(url).status_code == 403, route.name
         assert client.post(url, {}).status_code == 403, route.name

@@ -5,7 +5,7 @@ x-app: &app
     POSTGRES_HOST: db
     POSTGRES_PORT: 5432
     REDIS_URL: redis://redis:6379/0
-    CONTENT_CACHE_URL: redis://redis:6379/1
+    CONTENT_CACHE_URL: redis://cache:6380/0
     GADGET_STATE_DIR: /app/runtime
     MQTT_HOST: mqtt
     MQTT_PORT: 1883
@@ -25,6 +25,7 @@ services:
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_started}
+      cache: {condition: service_started}
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 8000"]
       interval: 5s
@@ -37,6 +38,16 @@ services:
   beat:
     <<: *app
     command: celery -A gadget_server beat --loglevel=INFO --schedule=/app/runtime/celerybeat-schedule
+    depends_on:
+      api: {condition: service_healthy}
+  operations:
+    <<: *app
+    command: python manage.py run_operations
+    depends_on:
+      api: {condition: service_healthy}
+  backups:
+    <<: *app
+    command: python manage.py run_operations --backups
     depends_on:
       api: {condition: service_healthy}
   collector:
@@ -56,9 +67,14 @@ services:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       retries: 30
+  cache:
+    image: redis:7-alpine
+    command: redis-server --port 6380 --save '' --appendonly no
+    restart: unless-stopped
   redis:
     image: redis:7-alpine
-    command: redis-server --save '' --appendonly no
+    command: redis-server --appendonly yes --appendfsync everysec
+    volumes: ["redis_data:/data"]
     restart: unless-stopped
   mqtt:
     image: eclipse-mosquitto:2
@@ -88,6 +104,7 @@ services:
       api: {condition: service_healthy}
     restart: unless-stopped
 volumes:
+  redis_data:
   postgres:
   runtime:
   media:

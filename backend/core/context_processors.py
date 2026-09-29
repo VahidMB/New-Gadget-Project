@@ -3,7 +3,7 @@ from core.access import is_platform_owner, is_platform_user
 
 def portal_permissions(request):
     from core.staff_access import route_allowed
-    menu = [('panel-device-list', 'گجت‌ها و نمایندگان'), ('panel-price-list', 'لیست قیمت شرکت'),
+    menu = [('panel-studio', 'استودیو نمایشگر'), ('panel-device-list', 'گجت‌ها و نمایندگان'), ('panel-price-list', 'لیست قیمت شرکت'),
             ('panel-data-source-list', 'منابع اطلاعات'), ('panel-message-list', 'پیام‌ها و زمان‌بندی'),
             ('panel-company-list', 'شرکت‌ها'), ('panel-user-list', 'کاربران'),
             ('panel-firmware-list', 'نسخه نرم‌افزار'), ('panel-templates', 'تم‌ها و صفحات'),
